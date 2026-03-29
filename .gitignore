@@ -1,0 +1,19 @@
+# Vivado temporary files and folders to ignore
+*.jou
+*.log
+*.str
+*.pb
+*.wdb
+*.wcfg
+*.do
+.Xil/
+
+# Ignore massive build directories
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+
+# Keep the Vivado project file, but ignore its auto-generated backups
+*.xpr.backup*
