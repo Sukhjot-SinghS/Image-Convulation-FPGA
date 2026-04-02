@@ -62,7 +62,6 @@ pipe DUT (
 	.pc_out(pc_out)
 );
 
-
 ////////////////////////////////////////////////////////////
 // INSTRUCTION MEMORY  (matches instr_mem.v)
 ////////////////////////////////////////////////////////////
@@ -94,10 +93,10 @@ data_mem DMEM (
 // SIMULATION TIME
 ////////////////////////////////////////////////////////////
 always @(posedge clk ) begin 
-	$display("time: %0d, next_pc = %h,pc = %h result = %0d", $time,DUT.next_pc ,DUT.pc ,$signed(DUT.execute.ex_result));
+	$display("time: %0d, next_pc = %h,pc = %h result = %0d,busy  = %b", $time,DUT.next_pc ,DUT.pc ,$signed(DUT.execute.ex_result),DUT.execute.alu_busy_o);
 end
 initial begin
-	#20000;   // run long enough to see program execute
+	#5000;   // run long enough to see program execute
 	$finish;
 end
 
