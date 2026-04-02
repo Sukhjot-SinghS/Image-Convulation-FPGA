@@ -24,10 +24,12 @@ module execute
 	input  [4:0]  dest_reg_sel,
 	input  [2:0]  alu_op,
 	input  [1:0]  dmem_raddr,
+	input       is_mext_i,
 
 	// -----------------------------	// FROM WB	// -----------------------------
 	input     	wb_branch_i,
 	input     	wb_branch_nxt_i,
+	
 
 	// -----------------------------	// EX → PIPE	// -----------------------------
 	output [31:0] alu_operand1,
@@ -47,7 +49,12 @@ module execute
 	output    	wb_branch_nxt,
 	output    	wb_mem_to_reg,
 	output [1:0]  wb_read_address,
-	output [2:0]  mem_alu_operation
+	output [2:0]  mem_alu_operation,
+
+
+
+	// to hazard unit 
+	output wire alu_busy_o
 );
 
 //////////////// Including OPCODES ////////////////////////////
@@ -80,6 +87,28 @@ assign alu_operand2 = immediate_sel
 // - Another result (ex_result_subu) must treat both operands as unsigned values
 // - The results must be wide enough to capture the sign/borrow bit
 // - These results will be used later to evaluate branch conditions
+
+
+// ------------------------------------------------------------------------
+// HARDWARE MATH UNIT (M-Extension)
+// ------------------------------------------------------------------------
+wire [31:0] rv32m_result;
+
+
+
+
+
+rv32m_alu u_hw_math (
+    .clk        (clk),
+    .reset_n    (reset),         // Shaurya named it reset_n
+    .start      (is_mext_i),     // The trigger from your Decoder
+    .funct3     (alu_op),
+    .operand1   (reg_rdata1),    // Direct register data
+    .operand2   (reg_rdata2),    // Direct register data
+    .result     (rv32m_result),
+    .busy       (alu_busy_o),    // Shaurya's busy flag
+    .valid      ()               // We don't strictly need this for our stall logic
+);
 
 assign ex_result_subs =
 	{alu_operand1[31], alu_operand1} -
@@ -210,7 +239,7 @@ always @(*) begin
             	default: ex_result = 'hx;
         	endcase    
     	end
-
+		is_mext_i: ex_result = rv32m_result;
     	default: ex_result = 'hx;
 	endcase
 end
@@ -226,7 +255,7 @@ ex_mem_wb_reg u_ex_mem_wb (
 	.ex_result  	(ex_result),
 
 	.mem_write  	(mem_write && !branch_stall),/////////////
-	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg),////////////////
+	.alu_to_reg 	(alu | lui | jal | jalr | mem_to_reg|is_mext_i),////////////////
 	.dest_reg_sel   (dest_reg_sel),
 	.branch_taken   (branch_taken),
 	.mem_to_reg 	(mem_to_reg),

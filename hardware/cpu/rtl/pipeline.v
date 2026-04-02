@@ -1,7 +1,9 @@
 //////////////// Including Stages ////////////////////////////
-`include "C:/Users/Lenovo/OneDrive/Desktop/IF_ID.v"
-`include "C:/Users/Lenovo/OneDrive/Desktop/execute.v"
-`include "C:/Users/Lenovo/OneDrive/Desktop/wb.v"
+`include "IF_ID.v"
+`include "execute.v"
+`include "wb.v"
+`include "hazard_unit.v"  
+`include "rv32m_alu.v"
 
  module pipe
 #(
@@ -55,11 +57,15 @@
 	wire               	jal;
 	wire               	jalr;
 	wire               	branch;
-	reg               	stall_read;
+	wire               	stall_read;
 	wire      	[31: 0] instruction;
 	wire      	[31: 0] reg_rdata2 ;
 	wire      	[31: 0] reg_rdata1;
 	reg       	[31: 0] regs [31: 1];
+
+	//hazard unit 
+	wire alu_busy;
+	wire combined_stall;
 
 	// PC
 
@@ -101,6 +107,8 @@
 	wire        	[31: 0] wb_read_data;
 	wire       	[31: 0] inst_mem_address;
 
+	wire                is_mext;
+
 //------------------------------------------------------//
 assign dmem_write_address       	= wb_write_address; 	// assigning where to write
 assign dmem_read_address        	= alu_operand1 + execute_immediate;  // Assigning address to read from the data memory
@@ -136,6 +144,7 @@ IF_ID IF_ID_stage (
 	.wb_dest_reg_sel	(wb_dest_reg_sel),
 	.wb_result      	(wb_result),
 	.wb_read_data   	(wb_read_data),
+	
 
 	// Instruction memory address offset
 	.inst_mem_offset	(inst_mem_address[1:0]),
@@ -148,6 +157,7 @@ IF_ID IF_ID_stage (
 	.jal_w          	(jal),
 	.jalr_w         	(jalr),
 	.branch_w       	(branch),
+	.is_mext_w          (is_mext),
 	.mem_write_w    	(mem_write),
 	.mem_to_reg_w   	(mem_to_reg),
 	.arithsubtype_w 	(arithsubtype),
@@ -161,15 +171,6 @@ IF_ID IF_ID_stage (
 );
 
 
-////////////////////////////////////////////////////////////
-// TODO: Register File Forwarding
-//
-// - If src register is x0 (5'd0) → return 0
-// - If WB stage writes same register (and not stalled) → forward:
-//    	wb_read_data (for LOAD)
-//    	wb_result	(for ALU)
-// - Else → read from register array (regs)
-////////////////////////////////////////////////////////////
 
 assign reg_rdata1 =
 	(src1_select == 5'd0) ? 0:
@@ -184,19 +185,6 @@ assign reg_rdata2 = (src2_select == 5'd0) ? 0:
     	? (wb_mem_to_reg ? wb_read_data : wb_result)
     	: regs[src2_select];//todo
 
-////////////////////////////////////////////////////////////
-// TODO: Register File Writeback
-//
-// On reset:
-//   - Clear registers x1-x31
-//
-// On valid WB cycle:
-//   - If wb_alu_to_reg asserted
-//   - AND no stall
-//   - Write either:
-//    	wb_read_data (LOAD)
-//    	wb_result	(ALU result)
-////////////////////////////////////////////////////////////
 
 integer i;
 always @(posedge clk or negedge reset) begin
@@ -211,16 +199,21 @@ always @(posedge clk or negedge reset) begin
 end
 
 
+//hazard unit changes 
+
+
+hazard_unit u_hazard (
+    .external_stall (stall),
+    .alu_busy       (alu_busy),
+    .combined_stall (combined_stall)
+);
+
+
 ////////////////////////////////////////////////////////////
 // Stall register
 ////////////////////////////////////////////////////////////
 
-always @(posedge clk or negedge reset) begin
-	if (!reset)
-    	stall_read <= 1'b1;
-	else
-    	stall_read <= stall;
-end
+assign stall_read = combined_stall || !reset;
 
 
 // instantiating execute module -----------------------------------
@@ -233,16 +226,13 @@ execute execute (
 
 	// -----------------
 	// FROM ID/EX
-	// -----------------
-	// ---- TODO: Connect ID/EX signals ----
-	// .reg_rdata1   ( ... ),
-	// Add remaining ID/EX connections here
+	
     .reg_rdata1        (reg_rdata1),
     .reg_rdata2        (reg_rdata2),
-    .execute_imm       (execute_immediate), // bug
+    .execute_imm       (execute_immediate),
     .pc                (pc),
     .fetch_pc          (fetch_pc),
-
+	.is_mext_i          (is_mext),
     .immediate_sel     (immediate_sel),
     .mem_write         (mem_write),
     .jal               (jal),
@@ -277,16 +267,7 @@ execute execute (
 	// -----------------
 	// EX → WB
 	// -----------------
-	// ---- TODO: Connect EX → WB signals ----
-	// .wb_result (wb_result)
-	// .wb_mem_write
-	// .wb_alu_to_reg
-	// .wb_dest_reg_sel
-	// .wb_branch
-	// .wb_branch_nxt
-	// .wb_mem_to_reg
-	// .wb_read_address
-	// .mem_alu_operation
+	
 	.wb_result         (wb_result),
     .wb_mem_write      (wb_mem_write),
     .wb_alu_to_reg     (wb_alu_to_reg),
@@ -295,25 +276,13 @@ execute execute (
     .wb_branch_nxt     (wb_branch_nxt),
     .wb_mem_to_reg     (wb_mem_to_reg),
     .wb_read_address   (wb_read_address),
-    .mem_alu_operation (wb_alu_operation)
+    .mem_alu_operation (wb_alu_operation),
+
+
+	.alu_busy_o (alu_busy)
 );
 
 
-
-////////////////////////////////////////////////////////////
-// PC Update Logic
-//
-// On reset:
-// - Set PC = RESET
-//
-// On each clock (if not stalled):
-// - If branch_stall = 1 → hold branch redirect and
-// move sequentially (PC = PC + 4).
-// - Else → update PC with next_pc
-// (this could be normal next or a jump/branch address).
-//
-// stall_read prevents any PC update.
-////////////////////////////////////////////////////////////
 
 always @(posedge clk or negedge reset) begin
 	if (!reset)
@@ -333,7 +302,7 @@ wb wb_stage (
     .fetch_pc_i         (fetch_pc),
     .wb_branch_i        (wb_branch), 
     .wb_mem_to_reg_i    (wb_mem_to_reg),
-    .mem_write_i        (/*wb_mem_write changed to */mem_write && !branch_stall),
+    .mem_write_i        (mem_write && !branch_stall),
     .write_address_i    (write_address),
     .alu_operand2_i     (alu_operand2),
     .alu_operation_i    (alu_operation),
@@ -351,37 +320,7 @@ wb wb_stage (
     .wb_read_data_o     (wb_read_data),
     .inst_fetch_pc_o    (inst_fetch_pc),
     .wb_stall_first_o   (wb_stall_first),
-    .wb_stall_second_o  (wb_stall_second)//added ports
-	
-   // -----------------
-   // TODO: Connect WB inputs
-   // -----------------
-   // .stall_read_i
-   // .fetch_pc_i
-   // .wb_branch_i
-   // .wb_mem_to_reg_i
-   // .mem_write_i
-   // .write_address_i
-   // .alu_operand2_i
-   // .alu_operation_i
-   // .wb_alu_operation_i
-   // .wb_read_address_i
-   // .dmem_read_data_i
-   // .dmem_write_valid_i
-
-   // -----------------
-   // TODO: Connect WB outputs
-   // -----------------
-   // .inst_mem_address_o
-   // .inst_mem_is_ready_o
-   // .wb_stall_o
-   // .wb_write_address_o
-   // .wb_write_data_o
-   // .wb_write_byte_o
-   // .wb_read_data_o
-   // .inst_fetch_pc_o
-   // .wb_stall_first_o
-   // .wb_stall_second_o
+    .wb_stall_second_o  (wb_stall_second)
 );
 
 assign pc_out = fetch_pc;
