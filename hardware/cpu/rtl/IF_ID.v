@@ -68,7 +68,9 @@ reg [31:0] saved_instruction;
     end
 
     // 3. YOUR MODIFIED WIRE: If we saved an instruction, output it. Otherwise, output RAM.
-    assign instruction_o = has_saved_inst ? saved_instruction : (stall_read_i ? NOP : inst_mem_read_data);
+    assign instruction_o = has_saved_inst ? saved_instruction : ((stall_read_i ) ? NOP : inst_mem_read_data);
+
+
 ////////////////////////////////////////////////////////////// Exception detection////////////////////////////////////////////////////////////
 always @(posedge clk or negedge reset) begin
     if (!reset)
@@ -106,11 +108,11 @@ always @(*) begin
 end
 // change 1 
 
-id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_n    	(stall_read_i),
+id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_i    	(stall_read_i),
 // From ID
 	.immediate_i	(immediate),
 	.immediate_sel_i((instruction_i[`OPCODE] == JALR)  ||(instruction_i[`OPCODE] == LOAD)  ||(instruction_i[`OPCODE] == ARITHI) ),
-	.alu_i      	((instruction_i[`OPCODE] == ARITHI || instruction_i[`OPCODE] == ARITHR) && instruction_i[25] != 1'b1),
+	.alu_i      	((instruction_i[`OPCODE] == ARITHI) || (instruction_i[`OPCODE] == ARITHR && instruction_i[31:25] != 7'b0000001)),
 	.lui_i      	(instruction_i[`OPCODE] == LUI),
 	.jal_i      	(instruction_i[`OPCODE] == JAL),
 	.jalr_i     	(instruction_i[`OPCODE] == JALR),
@@ -124,7 +126,7 @@ id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_n    	(stall_r
 	.dest_reg_sel_i (instruction_i[`RD]),
 	.alu_op_i   	(instruction_i[`FUNC3]),
 	.illegal_inst_i (illegal_inst),
-    .is_mext_i(instruction_i[`OPCODE] == ARITHR && instruction_i[25] == 1'b1),
+    .is_mext_i(instruction_i[`OPCODE] == ARITHR && instruction_i[31:25] == 7'b0000001),
 
 	// To EX (WIRES)
 	.execute_immediate_o (execute_immediate_w),
@@ -153,7 +155,7 @@ endmodule
 module id_ex_reg (
     input         clk,
     input         reset_n,
-    input         stall_n,
+    input         stall_i,
 
     // Inputs from ID
     input  [31:0] immediate_i,
@@ -214,7 +216,7 @@ always @(posedge clk or negedge reset_n) begin
         illegal_inst_o      <= 1'b0;
         is_mext_o <= 1'b0;
     end
-    else if (!stall_n) begin
+    else if (!stall_i) begin
         execute_immediate_o <= immediate_i;
         immediate_sel_o     <= immediate_sel_i;
         alu_o               <= alu_i;
