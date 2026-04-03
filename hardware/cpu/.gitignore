@@ -1,5 +1,5 @@
 # Vivado Simulation Garbage
-xsim.dir/
+xsim.dir/*
 .Xil/
 *.log
 *.jou
@@ -9,6 +9,9 @@ xsim.dir/
 *.sdb
 *.rlx
 
-# Simulation Outputs
+# Simulation Outputs and Backups
 simulation_results.txt
 stdout*
+../../software/mem_generator/
+../../software/modules/
+../../software/modules2/
