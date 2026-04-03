@@ -1,0 +1,3 @@
+rtl/memory.v
+rtl/pipeline.v
+tb/tb_pipeline.v
