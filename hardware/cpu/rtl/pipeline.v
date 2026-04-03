@@ -5,6 +5,10 @@
 `include "hazard_unit.v"  
 `include "rv32m_alu.v"
 
+//////////////// Including OPCODES ////////////////////////////
+// `include "opcode.vh"
+
+
  module pipe
 #(
 	parameter [31:0]         	RESET = 32'h0000_0000
@@ -15,6 +19,10 @@
 	input               	stall,
 	output          	exception,  
 	output [31:0] pc_out,
+
+	// Add these two lines to the port list:
+    //output [31:0] next_pc_pipe,
+    //output [31:0] inst_fetch_pc_pipe,
 
 	// interface of instruction Memory
 	input               	inst_mem_is_valid,
@@ -120,6 +128,7 @@ assign dmem_write_byte          	= wb_write_byte;	// flag for writing the data b
 assign dmem_read_data           	= dmem_read_data_temp;  	// data read from the memory
 assign dmem_read_valid_checker  	= 1'b1;
 // -----------------------------------------------------//
+
 
 // instantiating Instruction fetch module -----------------------
 IF_ID IF_ID_stage (
@@ -324,5 +333,9 @@ wb wb_stage (
 );
 
 assign pc_out = fetch_pc;
+
+// At the bottom of pipeline.v, connect them to the internal wires:
+//assign next_pc_pipe = next_pc;
+//assign inst_fetch_pc_pipe = inst_fetch_pc;
 
 endmodule

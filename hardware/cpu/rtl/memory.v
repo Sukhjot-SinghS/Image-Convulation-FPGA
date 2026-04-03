@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module instr_mem (
 	input  wire    	clk,
 	input  wire [31:0] pc, 	// byte address
@@ -13,6 +15,7 @@ module instr_mem (
 	// Initialize instruction memory from hex file (simulation / FPGA)
 	initial begin
     	$readmemh("multiplication.hex", imem);
+	//	$readmemh("imem.hex", imem);
 	end
 
 	// Synchronous instruction fetch
