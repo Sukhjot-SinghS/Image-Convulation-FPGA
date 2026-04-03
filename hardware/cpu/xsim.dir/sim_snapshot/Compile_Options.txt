@@ -1,1 +1,0 @@
--debug "typical" -top "tb_pipeline" -snapshot "sim_snapshot" 
