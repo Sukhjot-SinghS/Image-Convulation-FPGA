@@ -1,102 +1,92 @@
 `timescale 1ns / 1ps
-
 // ============================================================
-//  mmio_decoder.v
-//  Author : Satish Kumar (Group 18)
-//
-//  Purpose:
-//    Decodes CPU memory accesses into:
-//      - Kernel writes
-//      - Start signal
-//      - Done status read
-//
-//  Address Map:
-//    0x80000000 → k0
-//    ...
-//    0x80000020 → k8
-//    0x80000028 → START
-//    0x8000002C → STATUS (done)
+// mmio_decoder.v
+// Author : Satish Kumar (Group 18)
+// Purpose: Decode CPU memory accesses to kernel registers & control
+//          Generates START pulse and returns DONE status
 // ============================================================
 
 module mmio_decoder (
     input  wire        clk,
-    input  wire        rst,          // active-low
+    input  wire        rst,          // active-low reset
 
-    // CPU Interface
-    input  wire [31:0] addr,
-    input  wire [31:0] wdata,
-    input  wire        mem_write,
-    input  wire        mem_read,
-    output reg  [31:0] rdata,
+    // ── CPU interface
+    input  wire        mem_write,    // CPU write enable
+    input  wire        mem_read,     // CPU read enable
+    input  wire [31:0] addr,         // CPU address
+    input  wire [31:0] wdata,        // CPU write data
+    output reg  [31:0] rdata,        // CPU read data
 
-    // To kernel_regfile
-    output reg         kernel_we,
-    output reg  [3:0]  kernel_index,
-    output reg  [31:0] kernel_wdata,
+    // ── Kernel register interface
+    output reg         kernel_we,    // kernel write enable
+    output reg  [3:0]  kernel_addr,  // kernel register index (0-8)
+    output reg  [31:0] kernel_wdata, // kernel write data
 
-    // Control
-    output reg         start,
-    input  wire        done
+    // ── Control signals
+    output reg         start,        // START pulse to FSM / line_buffer
+    input  wire        done_in       // DONE from line_buffer / conv engine
 );
 
 ////////////////////////////////////////////////////////////
-// ADDRESS MAP
+// Address Map
 ////////////////////////////////////////////////////////////
-localparam KERNEL_BASE = 32'h8000_0000;
-localparam START_ADDR  = 32'h8000_0028;
-localparam STATUS_ADDR = 32'h8000_002C;
+localparam KERNEL_BASE = 32'h8000_0000; // k0
+localparam KERNEL_END  = 32'h8000_0020; // k8
+localparam START_ADDR  = 32'h8000_0028; // START
+localparam STATUS_ADDR = 32'h8000_002C; // DONE status
 
+// Latch for DONE signal
 reg done_reg;
 
 ////////////////////////////////////////////////////////////
-// WRITE LOGIC
+// WRITE LOGIC (from CPU)
 ////////////////////////////////////////////////////////////
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
+        // reset all outputs
         start        <= 1'b0;
         kernel_we    <= 1'b0;
-        kernel_index <= 4'd0;
+        kernel_addr  <= 4'd0;
         kernel_wdata <= 32'd0;
         done_reg     <= 1'b0;
-    end
-    else begin
-        // default
+    end else begin
+        // default: no write or start pulse
         kernel_we <= 1'b0;
         start     <= 1'b0;
 
-        // START pulse (1 cycle)
+        // CPU writes START
         if (mem_write && addr == START_ADDR && wdata[0]) begin
-            start    <= 1'b1;
-            done_reg <= 1'b0;
+            start    <= 1'b1;  // 1-cycle START pulse
+            done_reg <= 1'b0;  // clear done
         end
 
-        // KERNEL WRITE (safe + aligned)
+        // CPU writes kernel registers (k0–k8)
         if (mem_write &&
-            (addr - KERNEL_BASE) < 32'd36 &&
+            (addr >= KERNEL_BASE) &&
+            (addr <= KERNEL_END) &&
             addr[1:0] == 2'b00) begin
-
-            kernel_we    <= 1'b1;
-            kernel_index <= (addr - KERNEL_BASE) >> 2;
+            kernel_we    <= 1'b1;                    // enable write to kernel
+            kernel_addr  <= (addr - KERNEL_BASE) >> 2; // index 0-8
             kernel_wdata <= wdata;
         end
 
-        // DONE latch
-        if (done)
+        // Latch DONE from conv_engine / line_buffer
+        if (done_in)
             done_reg <= 1'b1;
     end
 end
 
 ////////////////////////////////////////////////////////////
-// READ LOGIC (REGISTERED)
+// READ LOGIC (from CPU)
 ////////////////////////////////////////////////////////////
 always @(posedge clk or negedge rst) begin
-    if (!rst)
+    if (!rst) begin
         rdata <= 32'd0;
-    else begin
-        rdata <= 32'd0;
+    end else begin
+        rdata <= 32'd0; // default read = 0
 
         if (mem_read && addr == STATUS_ADDR)
-            rdata <= {31'd0, done_reg};
+            rdata <= {31'd0, done_reg}; // DONE status in LSB
     end
 end
 
