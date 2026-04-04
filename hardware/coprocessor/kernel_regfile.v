@@ -1,5 +1,11 @@
 `timescale 1ns / 1ps
 
+// ============================================================
+//  kernel_regfile.v
+//  Stores 3×3 convolution kernel (9 values)
+//  Written by CPU via MMIO → Used by conv_engine
+// ============================================================
+
 module kernel_regfile (
     input  wire clk,
     input  wire rst,   // active LOW
