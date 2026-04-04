@@ -1,40 +1,34 @@
 `timescale 1ns / 1ps
-// ============================================================
-// mmio_decoder.v
-// Author: Satish Kumar
-// Purpose: Memory-mapped IO decoder for kernel and START control
-//          Receives CPU read/write, outputs kernel registers
-// ============================================================
 
 module mmio_decoder (
     input  wire        clk,
-    input  wire        reset,        // Active-low reset
-    
+    input  wire        reset,        // active-low
+
     // CPU Interface
-    input  wire [31:0] address,      // CPU memory address
-    input  wire [31:0] write_data,   // CPU write data
-    input  wire        write_enable, // CPU write enable
-    input  wire        read_enable,  // CPU read enable
-    output reg  [31:0] read_data,    // CPU read data
-    
+    input  wire [31:0] address,
+    input  wire [31:0] write_data,
+    input  wire        write_enable,
+    input  wire        read_enable,
+    output reg  [31:0] read_data,
+
     // Kernel Regfile Interface
-    output reg         kernel_we,    // Pulse to write kernel register
-    output reg  [3:0]  kernel_index, // Which kernel register to write (0–8)
-    output reg  [31:0] kernel_wdata, // Data to kernel register
-    
+    output reg         kernel_we,
+    output reg  [3:0]  kernel_index,
+    output reg  [31:0] kernel_wdata,
+
     // Control Signals
-    output reg         start,        // Pulse to start line buffer/FSM
-    input  wire        done          // Done signal from FSM/line_buffer
+    output reg         start,
+    input  wire        done
 );
 
 ////////////////////////////////////////////////////////////
 // ADDRESS MAP
 ////////////////////////////////////////////////////////////
-localparam KERNEL_BASE = 32'h80000000; // k0–k8 registers
-localparam START_ADDR  = 32'h80000028; // start pulse
-localparam STATUS_ADDR = 32'h8000002C; // CPU polls done status
+localparam KERNEL_BASE = 32'h80000000;
+localparam START_ADDR  = 32'h80000024;
+localparam STATUS_ADDR = 32'h80000028;
+localparam NORM_ADDR   = 32'h80000030;
 
-// Internal done register for CPU polling
 reg done_reg;
 
 ////////////////////////////////////////////////////////////
@@ -42,33 +36,40 @@ reg done_reg;
 ////////////////////////////////////////////////////////////
 always @(posedge clk) begin
     if (!reset) begin
-        start        <= 1'b0;
-        kernel_we    <= 1'b0;
-        kernel_index <= 4'd0;
-        kernel_wdata <= 32'd0;
-        done_reg     <= 1'b0;
-    end
+        start       <= 0;
+        kernel_we   <= 0;
+        done_reg    <= 0;
+        kernel_index<= 0;
+        kernel_wdata<= 0;
+    end 
     else begin
-        // Default values
-        kernel_we <= 1'b0;
-        start     <= 1'b0;
+        // defaults
+        kernel_we <= 0;
+        start     <= 0;
 
-        // START pulse: CPU writes 1 to START_ADDR
+        // START
         if (write_enable && address == START_ADDR && write_data[0])
-            start <= 1'b1;
+            start <= 1;
 
-        // KERNEL write: CPU writes to KERNEL_BASE + offset
+        // KERNEL WRITE (Registers k0-k8)
         if (write_enable && address >= KERNEL_BASE && address < KERNEL_BASE + 36) begin
-            kernel_we    <= 1'b1;
-            kernel_index <= (address - KERNEL_BASE) >> 2; // 0–8
+            kernel_we    <= 1;
+            kernel_index <= (address - KERNEL_BASE) >> 2;
             kernel_wdata <= write_data;
         end
 
-        // DONE handling for polling
+        // NORM_EN
+        if (write_enable && address == NORM_ADDR) begin
+            kernel_we    <= 1;
+            kernel_index <= 4'd10;
+            kernel_wdata <= write_data;
+        end
+
+        // DONE handling
         if (start)
-            done_reg <= 1'b0;     // Reset done when new start issued
+            done_reg <= 0;
         else if (done)
-            done_reg <= 1'b1;     // Set done when FSM signals completion
+            done_reg <= 1;
     end
 end
 
@@ -77,9 +78,11 @@ end
 ////////////////////////////////////////////////////////////
 always @(*) begin
     if (read_enable && address == STATUS_ADDR)
-        read_data = {31'b0, done_reg}; // LSB is done
+        read_data = {31'b0, done_reg};
     else
         read_data = 32'd0;
 end
 
 endmodule
+
+
