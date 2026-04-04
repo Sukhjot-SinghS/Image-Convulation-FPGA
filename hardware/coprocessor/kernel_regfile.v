@@ -32,10 +32,10 @@ always @(posedge clk or negedge rst) begin
         k6        <= 8'sd0; k7 <= 8'sd0; k8 <= 8'sd0;
         start_out <= 1'b0;
         done_out  <= 1'b0;
-        norm_en   <= 1'b0;
+        norm_en   <= 1'b0;   // default Sobel/Sharpen
     end
     else begin
-        start_out <= 1'b0; // 1-cycle pulse
+        start_out <= 1'b0;  // 1-cycle pulse
 
         if (done_in)
             done_out <= 1'b1;
@@ -54,10 +54,10 @@ always @(posedge clk or negedge rst) begin
                 4'd9: begin
                     if (wdata[0]) begin
                         start_out <= 1'b1;
-                        done_out  <= 1'b0;
+                        done_out  <= 1'b0; // clear done on new start
                     end
                 end
-                4'd10: norm_en <= wdata[0];
+                4'd10: norm_en <= wdata[0];  // new norm_en register
                 default: ;
             endcase
         end
