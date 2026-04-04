@@ -1,0 +1,14 @@
+
+code.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00000000 <print_result>:
+   0:	00008067          	ret
+
+Disassembly of section .text.startup:
+
+00000000 <main>:
+   0:	00000513          	li	a0,0
+   4:	00008067          	ret
