@@ -21,9 +21,11 @@ module kernel_regfile (
     output wire [31:0] k6, k7, k8
 );
 
+// Internal storage (9 kernel registers)
 reg [31:0] kernel [0:8];
 integer i;
 
+ // Write / Reset logic
 always @(posedge clk) begin
     if (!rst) begin
         for (i = 0; i < 9; i = i + 1)
@@ -35,6 +37,8 @@ always @(posedge clk) begin
     end
 end
 
+    
+// Outputs to convolution engine
 assign k0 = kernel[0];
 assign k1 = kernel[1];
 assign k2 = kernel[2];
