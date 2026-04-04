@@ -2,43 +2,51 @@
 
 // ============================================================
 //  kernel_regfile.v
-//  Stores 3×3 convolution kernel (9 values)
-//  Written by CPU via MMIO → Used by conv_engine
+//  Author : Satish Kumar (Group 18)
+//
+//  Purpose:
+//    Stores 9 signed 8-bit kernel coefficients (k0–k8)
+//    Written by CPU via MMIO, used by conv_engine
 // ============================================================
 
 module kernel_regfile (
-    input  wire clk,
-    input  wire rst,   // active LOW
+    input  wire        clk,
+    input  wire        rst,          // active-low reset
 
-    // From MMIO
-    input  wire        kernel_we,    // Write enable
-    input  wire [3:0]  kernel_index, // Index (0–8)
-    input  wire [31:0] kernel_wdata, // Data from CPU
+    // From MMIO decoder
+    input  wire        kernel_we,
+    input  wire [3:0]  kernel_index,
+    input  wire [31:0] kernel_wdata,
 
-    // To conv_engine
-    output wire [31:0] k0, k1, k2,
-    output wire [31:0] k3, k4, k5,
-    output wire [31:0] k6, k7, k8
+    // To convolution engine (8-bit signed)
+    output wire signed [7:0] k0, k1, k2,
+    output wire signed [7:0] k3, k4, k5,
+    output wire signed [7:0] k6, k7, k8
 );
 
-// Internal storage (9 kernel registers)
-reg [31:0] kernel [0:8];
+////////////////////////////////////////////////////////////
+// INTERNAL STORAGE (9 × 8-bit signed)
+////////////////////////////////////////////////////////////
+reg signed [7:0] kernel [0:8];
 integer i;
 
- // Write / Reset logic
-always @(posedge clk) begin
+////////////////////////////////////////////////////////////
+// WRITE LOGIC
+////////////////////////////////////////////////////////////
+always @(posedge clk or negedge rst) begin
     if (!rst) begin
         for (i = 0; i < 9; i = i + 1)
-            kernel[i] <= 32'd0;
+            kernel[i] <= 8'sd0;
     end 
     else if (kernel_we) begin
-        if (kernel_index < 9)
-            kernel[kernel_index] <= kernel_wdata;
+        if (kernel_index < 4'd9)
+            kernel[kernel_index] <= kernel_wdata[7:0]; // take lower 8 bits
     end
 end
 
-    
-// Outputs to convolution engine
+////////////////////////////////////////////////////////////
+// OUTPUTS → conv_engine
+////////////////////////////////////////////////////////////
 assign k0 = kernel[0];
 assign k1 = kernel[1];
 assign k2 = kernel[2];
