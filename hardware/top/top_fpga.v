@@ -6,10 +6,10 @@
 // ============================================================
 
 module top_fpga #(
-    parameter IMEMSIZE = 4096,
-    parameter DMEMSIZE = 4096,
-    parameter IMG_W = 128,
-    parameter IMG_H = 128,
+    parameter IMEMSIZE   = 4096,
+    parameter DMEMSIZE   = 4096,
+    parameter IMG_W      = 128,
+    parameter IMG_H      = 128,
     parameter CLKS_PER_BIT = 87
 )(
     input  wire clk,      // board clock, e.g. 100 MHz
@@ -111,16 +111,27 @@ module top_fpga #(
     );
 
     // =========================================================
-    // FSM + image processing integration
+    // MMIO + Kernel + FSM wires
     // =========================================================
+    wire        k_we;
+    wire [3:0]  k_idx;
+    wire [31:0] k_wdata;
+    wire        start_sig;
+    wire        done_sig;
+    wire signed [7:0] k0, k1, k2, k3, k4, k5, k6, k7, k8;
+    wire        norm_en;
 
-    wire        mem_write, mem_read;
-    wire [31:0] cpu_addr, cpu_wdata, cpu_rdata;
-    assign mem_write = dmem_we;  // map CPU DMEM write to MMIO
-    assign mem_read  = dmem_re;  // map CPU DMEM read to MMIO
-    assign cpu_addr  = dmem_waddr; // address to MMIO decoder
-    assign cpu_wdata = dmem_wdata; // data to MMIO decoder
+    // Map CPU DMEM interface to MMIO decoder
+    wire [31:0] cpu_addr = dmem_waddr;
+    wire [31:0] cpu_wdata = dmem_wdata;
+    wire        mem_write = dmem_we;
+    wire        mem_read  = dmem_re;
 
+    wire [31:0] cpu_rdata;
+
+    // =========================================================
+    // Top FSM instantiation (handles RX/TX + start/done)
+    // =========================================================
     top_fsm #(
         .IMG_W(IMG_W),
         .IMG_H(IMG_H),
@@ -135,6 +146,42 @@ module top_fpga #(
         .cpu_addr(cpu_addr),
         .cpu_wdata(cpu_wdata),
         .cpu_rdata(cpu_rdata)
+    );
+
+    // =========================================================
+    // MMIO decoder instantiation
+    // =========================================================
+    mmio_decoder mmio_inst (
+        .clk(clk),
+        .reset(reset),
+        .address(cpu_addr),
+        .write_data(cpu_wdata),
+        .write_enable(mem_write),
+        .read_enable(mem_read),
+        .read_data(cpu_rdata),
+        .kernel_we(k_we),
+        .kernel_index(k_idx),
+        .kernel_wdata(k_wdata),
+        .start(start_sig),
+        .done(done_sig)
+    );
+
+    // =========================================================
+    // Kernel register file instantiation
+    // =========================================================
+    kernel_regfile kernel_inst (
+        .clk(clk),
+        .rst(reset),
+        .we(k_we),
+        .sel(k_idx),
+        .wdata(k_wdata[7:0]),
+        .done_in(done_sig),
+        .k0(k0), .k1(k1), .k2(k2),
+        .k3(k3), .k4(k4), .k5(k5),
+        .k6(k6), .k7(k7), .k8(k8),
+        .start_out(),   // connect to conv_datapath FSM if needed
+        .done_out(done_sig),
+        .norm_en(norm_en)
     );
 
 endmodule
