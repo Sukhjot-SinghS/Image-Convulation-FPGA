@@ -23,12 +23,19 @@
 	input               	dmem_write_valid,
 	input               	dmem_read_valid,
 
-	 output        dmem_re_o,
+	output        dmem_re_o,
     output [31:0] dmem_raddr_o,
     output        dmem_we_o,
     output [31:0] dmem_waddr_o,
     output [31:0] dmem_wdata_o,
-    output [3:0]  dmem_wstrb_o
+    output [3:0]  dmem_wstrb_o,
+
+
+	output        mmio_write_enable,
+    output        mmio_read_enable,
+    output [31:0] mmio_write_address,
+    output [31:0] mmio_write_data,
+    input  [31:0] mmio_read_data
 );
     
 	//Declaring Wires and Registers
@@ -117,11 +124,15 @@
 	wire                is_mext;
 
 	wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
-	wire is_mmio_read  = (dmem_read_address  >= 32'h8000_0000);
-	wire   mmio_write_enable = wb_mem_write && is_mmio_write;
-	wire [31:0] mmio_write_data    = wb_write_data;
-    wire [31:0] mmio_write_address = dmem_write_address;
-	wire [31:0] mmio_read_data;
+    wire is_mmio_read  = (dmem_read_address  >= 32'h8000_0000);
+
+    // Drive the MMIO output ports!
+    assign mmio_write_enable  = wb_mem_write && is_mmio_write;
+    assign mmio_read_enable   = mem_to_reg   && is_mmio_read;  // Satish's Read Enable (using load flag)
+    assign mmio_write_data    = wb_write_data;
+    assign mmio_write_address = dmem_write_address;
+    
+    // (Notice we deleted 'wire [31:0] mmio_read_data' because it is an input port now!)
 //------------------------------------------------------//
 assign dmem_write_address       	= wb_write_address; 	// assigning where to write
 assign dmem_read_address        	= alu_operand1 + execute_immediate;  // Assigning address to read from the data memory
