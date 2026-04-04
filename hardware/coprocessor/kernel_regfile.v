@@ -10,10 +10,12 @@ module kernel_regfile (
     input  wire clk,
     input  wire rst,   // active LOW
 
-    input  wire        kernel_we,
-    input  wire [3:0]  kernel_index,
-    input  wire [31:0] kernel_wdata,
+    // From MMIO
+    input  wire        kernel_we,    // Write enable
+    input  wire [3:0]  kernel_index, // Index (0–8)
+    input  wire [31:0] kernel_wdata, // Data from CPU
 
+    // To conv_engine
     output wire [31:0] k0, k1, k2,
     output wire [31:0] k3, k4, k5,
     output wire [31:0] k6, k7, k8
