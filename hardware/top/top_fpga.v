@@ -89,7 +89,7 @@ pipe pipe_u (
 	.inst_mem_is_valid(inst_mem_is_valid),
 	.inst_mem_read_data(inst_mem_read_data),
 
-	.dmem_read_data_temp(dmem_read_data),
+	.dmem_read_data_temp(dmem_read_data), //.dmem_read_data_temp(mmio_rdata), chang to this if required
 	.dmem_write_valid(dmem_write_valid),
 	.dmem_read_valid(dmem_read_valid)
 // TODO: Might have a few more port signals
