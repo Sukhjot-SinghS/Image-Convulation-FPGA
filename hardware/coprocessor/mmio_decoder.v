@@ -1,13 +1,19 @@
 `timescale 1ns / 1ps
 
+// ============================================================
+//  mmio_decoder.v
+//  Maps CPU memory access → hardware control signals
+// ============================================================
+
 module mmio_decoder (
     input  wire        clk,
-    input  wire        rst,   // active LOW
+    input  wire        rst,   // Active LOW
 
     // CPU Interface
     input  wire [31:0] addr,
     input  wire [31:0] wdata,
-    input  wire        we,
+    input  wire        we,    // Write enable
+    input  wire        re,    // Read enable   
     output reg  [31:0] rdata,
 
     // Kernel Regfile Interface
@@ -21,9 +27,9 @@ module mmio_decoder (
 );
 
 ////////////////////////////////////////////////////////////
-// ADDRESS MAP (MATCHES C CODE)
+// ADDRESS MAP
 ////////////////////////////////////////////////////////////
-localparam KERNEL_BASE = 32'h80000000;   // kernel[0] → kernel[8]
+localparam KERNEL_BASE = 32'h80000000;
 localparam START_ADDR  = 32'h80000028;
 localparam STATUS_ADDR = 32'h8000002C;
 
@@ -37,9 +43,9 @@ reg done_reg;
 ////////////////////////////////////////////////////////////
 always @(posedge clk) begin
     if (!rst) begin
-        start       <= 0;
-        kernel_we   <= 0;
-        done_reg    <= 0;
+        start     <= 0;
+        kernel_we <= 0;
+        done_reg  <= 0;
     end 
     else begin
         // default
@@ -66,13 +72,18 @@ always @(posedge clk) begin
 end
 
 ////////////////////////////////////////////////////////////
-// READ LOGIC
+// READ LOGIC (WITH ENABLE)
 ////////////////////////////////////////////////////////////
 always @(*) begin
-    case (addr)
-        STATUS_ADDR: rdata = {31'b0, done_reg};
-        default:     rdata = 32'd0;
-    endcase
+    if (re) begin
+        case (addr)
+            STATUS_ADDR: rdata = {31'b0, done_reg};
+            default:     rdata = 32'd0;
+        endcase
+    end 
+    else begin
+        rdata = 32'd0;
+    end
 end
 
 endmodule
