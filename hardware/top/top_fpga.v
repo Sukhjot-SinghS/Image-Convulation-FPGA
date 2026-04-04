@@ -140,5 +140,18 @@ mmio_decoder mmio (
     .done(done)       
 );
 
+// Kernel Register File
+kernel_regfile krf (
+    .clk(clk),
+    .rst(~reset),
 
+    .kernel_we(kernel_we),
+    .kernel_index(kernel_index),
+    .kernel_wdata(kernel_wdata),
+
+    .k0(k0), .k1(k1), .k2(k2),
+    .k3(k3), .k4(k4), .k5(k5),
+    .k6(k6), .k7(k7), .k8(k8)
+);
+	
 endmodule
