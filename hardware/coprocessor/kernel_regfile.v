@@ -1,60 +1,51 @@
 `timescale 1ns / 1ps
-
 // ============================================================
-//  kernel_regfile.v
-//  Author : Satish Kumar (Group 18)
-//
-//  Purpose:
-//    Stores 9 signed 8-bit kernel coefficients (k0–k8)
-//    Written by CPU via MMIO, used by conv_engine
+// kernel_regfile.v
+// Author : Satish Kumar (Group 18)
+// Purpose: 3x3 kernel storage for convolution engine
+//          9 registers (k0–k8) with write enable from MMIO
 // ============================================================
 
 module kernel_regfile (
     input  wire        clk,
-    input  wire        rst,          // active-low reset
+    input  wire        rst,       // active-low reset
 
-    // From MMIO decoder
-    input  wire        kernel_we,
-    input  wire [3:0]  kernel_index,
-    input  wire [31:0] kernel_wdata,
+    // Write interface from MMIO
+    input  wire        we,        // write enable
+    input  wire [3:0]  addr,      // kernel index 0–8
+    input  wire [31:0] wdata,     // CPU data (only lower 8 bits used)
 
-    // To convolution engine (8-bit signed)
-    output wire signed [7:0] k0, k1, k2,
-    output wire signed [7:0] k3, k4, k5,
-    output wire signed [7:0] k6, k7, k8
+    // Outputs to conv_engine
+    output reg signed [7:0] k0,
+    output reg signed [7:0] k1,
+    output reg signed [7:0] k2,
+    output reg signed [7:0] k3,
+    output reg signed [7:0] k4,
+    output reg signed [7:0] k5,
+    output reg signed [7:0] k6,
+    output reg signed [7:0] k7,
+    output reg signed [7:0] k8
 );
 
-////////////////////////////////////////////////////////////
-// INTERNAL STORAGE (9 × 8-bit signed)
-////////////////////////////////////////////////////////////
-reg signed [7:0] kernel [0:8];
-integer i;
-
-////////////////////////////////////////////////////////////
-// WRITE LOGIC
-////////////////////////////////////////////////////////////
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
-        for (i = 0; i < 9; i = i + 1)
-            kernel[i] <= 8'sd0;
-    end 
-    else if (kernel_we) begin
-        if (kernel_index < 4'd9)
-            kernel[kernel_index] <= kernel_wdata[7:0]; // take lower 8 bits
+        k0 <= 8'd0; k1 <= 8'd0; k2 <= 8'd0;
+        k3 <= 8'd0; k4 <= 8'd0; k5 <= 8'd0;
+        k6 <= 8'd0; k7 <= 8'd0; k8 <= 8'd0;
+    end else if (we) begin
+        case (addr)
+            4'd0: k0 <= wdata[7:0];
+            4'd1: k1 <= wdata[7:0];
+            4'd2: k2 <= wdata[7:0];
+            4'd3: k3 <= wdata[7:0];
+            4'd4: k4 <= wdata[7:0];
+            4'd5: k5 <= wdata[7:0];
+            4'd6: k6 <= wdata[7:0];
+            4'd7: k7 <= wdata[7:0];
+            4'd8: k8 <= wdata[7:0];
+            default: ; // do nothing for invalid addr
+        endcase
     end
 end
-
-////////////////////////////////////////////////////////////
-// OUTPUTS → conv_engine
-////////////////////////////////////////////////////////////
-assign k0 = kernel[0];
-assign k1 = kernel[1];
-assign k2 = kernel[2];
-assign k3 = kernel[3];
-assign k4 = kernel[4];
-assign k5 = kernel[5];
-assign k6 = kernel[6];
-assign k7 = kernel[7];
-assign k8 = kernel[8];
 
 endmodule
