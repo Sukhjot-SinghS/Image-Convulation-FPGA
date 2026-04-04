@@ -122,6 +122,23 @@ data_mem DMEM (
 	.wstrb(TODO: Add dmem_write_byte as a port signal from the pipe)
 );
 
+// MMIO → Kernel
+mmio_decoder mmio (
+    .clk(clk),
+    .rst(~reset),
+
+    .addr(dmem_addr),
+    .wdata(dmem_wdata),
+    .we(|dmem_wstrb),   
+    .rdata(mmio_rdata),
+
+    .kernel_we(kernel_we),
+    .kernel_index(kernel_index),
+    .kernel_wdata(kernel_wdata),
+
+    .start(start),
+    .done(done)       
+);
 
 
 endmodule
