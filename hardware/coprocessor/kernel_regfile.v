@@ -1,59 +1,66 @@
 `timescale 1ns / 1ps
-// ============================================================
-// kernel_regfile.v
-// Author: Satish Kumar
-// Purpose: Stores 3x3 convolution kernel values
-// ============================================================
 
 module kernel_regfile (
     input  wire        clk,
-    input  wire        rst,       // active LOW
-    
-    // MMIO interface (write from CPU via mmio_decoder)
-    input  wire        we,        // write enable pulse
-    input  wire [3:0]  addr,      // kernel index 0–8
-    input  wire [31:0] wdata,     // 32-bit CPU data
-    
-    // Output to conv engine
-    output reg signed [7:0] k0,
-    output reg signed [7:0] k1,
-    output reg signed [7:0] k2,
-    output reg signed [7:0] k3,
-    output reg signed [7:0] k4,
-    output reg signed [7:0] k5,
-    output reg signed [7:0] k6,
-    output reg signed [7:0] k7,
-    output reg signed [7:0] k8
+    input  wire        rst,        // active-low
+
+    // Write interface from mmio_decoder
+    input  wire        we,
+    input  wire [3:0]  sel,
+    input  wire [7:0]  wdata,
+
+    // done from conv_engine
+    input  wire        done_in,
+
+    // Kernel coefficients → conv_datapath
+    output reg signed [7:0] k0, k1, k2,
+    output reg signed [7:0] k3, k4, k5,
+    output reg signed [7:0] k6, k7, k8,
+
+    // Control signals
+    output reg         start_out,
+    output reg         done_out,
+
+    // Norm enable → conv_datapath
+    output reg         norm_en
 );
 
-////////////////////////////////////////////////////////////
-// INTERNAL WRITE LOGIC
-////////////////////////////////////////////////////////////
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
-        k0 <= 8'sd0;
-        k1 <= 8'sd0;
-        k2 <= 8'sd0;
-        k3 <= 8'sd0;
-        k4 <= 8'sd0;
-        k5 <= 8'sd0;
-        k6 <= 8'sd0;
-        k7 <= 8'sd0;
-        k8 <= 8'sd0;
+        k0        <= 8'sd0; k1 <= 8'sd0; k2 <= 8'sd0;
+        k3        <= 8'sd0; k4 <= 8'sd0; k5 <= 8'sd0;
+        k6        <= 8'sd0; k7 <= 8'sd0; k8 <= 8'sd0;
+        start_out <= 1'b0;
+        done_out  <= 1'b0;
+        norm_en   <= 1'b0;
     end
-    else if (we) begin
-        case(addr)
-            4'd0: k0 <= wdata[7:0];
-            4'd1: k1 <= wdata[7:0];
-            4'd2: k2 <= wdata[7:0];
-            4'd3: k3 <= wdata[7:0];
-            4'd4: k4 <= wdata[7:0];
-            4'd5: k5 <= wdata[7:0];
-            4'd6: k6 <= wdata[7:0];
-            4'd7: k7 <= wdata[7:0];
-            4'd8: k8 <= wdata[7:0];
-            default: ; // ignore out-of-range writes
-        endcase
+    else begin
+        start_out <= 1'b0; // 1-cycle pulse
+
+        if (done_in)
+            done_out <= 1'b1;
+
+        if (we) begin
+            case (sel)
+                4'd0: k0 <= $signed(wdata);
+                4'd1: k1 <= $signed(wdata);
+                4'd2: k2 <= $signed(wdata);
+                4'd3: k3 <= $signed(wdata);
+                4'd4: k4 <= $signed(wdata);
+                4'd5: k5 <= $signed(wdata);
+                4'd6: k6 <= $signed(wdata);
+                4'd7: k7 <= $signed(wdata);
+                4'd8: k8 <= $signed(wdata);
+                4'd9: begin
+                    if (wdata[0]) begin
+                        start_out <= 1'b1;
+                        done_out  <= 1'b0;
+                    end
+                end
+                4'd10: norm_en <= wdata[0];
+                default: ;
+            endcase
+        end
     end
 end
 
