@@ -12,6 +12,7 @@ module conv_engine (
     input  wire signed [7:0] k3, k4, k5,
     input  wire signed [7:0] k6, k7, k8,
 
+    input  wire        norm_en,        // CHANGE 1: new port added
     input  wire        window_valid,
     input  wire [13:0] pixel_idx_in,
 
@@ -20,7 +21,7 @@ module conv_engine (
     output reg  [13:0] pixel_idx_out
 );
 
-// STAGE 1
+// STAGE 1 — 9 parallel multiplications
 reg signed [16:0] prod0, prod1, prod2;
 reg signed [16:0] prod3, prod4, prod5;
 reg signed [16:0] prod6, prod7, prod8;
@@ -48,7 +49,7 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// STAGE 2
+// STAGE 2 — row-wise addition
 reg signed [18:0] sum_row0, sum_row1, sum_row2;
 reg        valid_s2;
 reg [13:0] idx_s2;
@@ -66,7 +67,7 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// STAGE 3
+// STAGE 3 — final accumulation
 reg signed [20:0] raw_sum;
 reg        valid_s3;
 reg [13:0] idx_s3;
@@ -82,7 +83,13 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// OUTPUT STAGE
+// CHANGE 2: processed_sum — applies shift for blur, passthrough for sobel/sharpen
+// norm_en = 0 → Sobel / Sharpen → use raw_sum directly
+// norm_en = 1 → Blur            → shift right 3 (divide by 8 ≈ divide by 9)
+wire signed [20:0] processed_sum;
+assign processed_sum = norm_en ? (raw_sum >>> 3) : raw_sum;
+
+// OUTPUT STAGE — clamp processed_sum to 0-255
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         pixel_out     <= 8'd0;
@@ -91,9 +98,12 @@ always @(posedge clk or negedge rst) begin
     end else begin
         out_valid     <= valid_s3;
         pixel_idx_out <= idx_s3;
-        if      (raw_sum < 0)   pixel_out <= 8'd0;
-        else if (raw_sum > 255) pixel_out <= 8'd255;
-        else                    pixel_out <= raw_sum[7:0];
+        if      (processed_sum < $signed(21'd0))
+            pixel_out <= 8'd0;
+        else if (processed_sum > $signed(21'd255))
+            pixel_out <= 8'd255;
+        else
+            pixel_out <= processed_sum[7:0];
     end
 end
 
