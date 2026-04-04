@@ -53,6 +53,30 @@ end
 	assign dmem_read_valid   = 1'b1;
 assign led = pc_disp;
 
+// =======================
+// MMIO + COPROCESSOR WIRES
+// =======================
+
+// From CPU
+wire [31:0] dmem_addr;
+wire [31:0] dmem_wdata;
+wire [3:0]  dmem_wstrb;
+
+// To CPU
+wire [31:0] mmio_rdata;
+
+// Kernel + Control
+wire kernel_we;
+wire [3:0] kernel_index;
+wire [31:0] kernel_wdata;
+
+wire start;
+wire done;
+
+// Kernel outputs
+wire [31:0] k0,k1,k2,k3,k4,k5,k6,k7,k8;
+
+
 ////////////////////////////////////////////////////////////
 // PIPELINE CPU
 ////////////////////////////////////////////////////////////
