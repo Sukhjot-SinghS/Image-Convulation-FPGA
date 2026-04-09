@@ -21,7 +21,7 @@ READELF = riscv-none-elf-readelf
 
 # extra -->
 # Change from -march=rv32i to -march=rv32im
-CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O2 -Wall
+CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O0 -Wall
 # Add linker flags to use your link.ld script
 LDFLAGS = -nostdlib -T link.ld
 # <-- extra
@@ -73,7 +73,7 @@ fib: $(SRC_FIB)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -86,7 +86,7 @@ addition: $(SRC_ADDITION)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -99,7 +99,7 @@ filter_switch: $(SRC_FSW)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -112,7 +112,7 @@ hw_conv_mmio: $(SRC_MMIO)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -125,7 +125,7 @@ mul_div_test: $(SRC_MULDIV)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -138,7 +138,7 @@ sw_blur: $(SRC_BLUR)
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
@@ -151,7 +151,7 @@ sw_sobel: $(SRC_SOBEL)
 	$(OBJDUMP) -d code.elf > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 
-	# NEW STEP: Copy the results to the Hardware directory
+	@echo NEW STEP: Copy the results to the Hardware directory
 	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
