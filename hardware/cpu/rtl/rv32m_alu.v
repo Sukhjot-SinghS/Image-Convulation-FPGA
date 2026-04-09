@@ -19,7 +19,7 @@ module rv32m_alu (
     // 1. MULTIPLIER (Single Cycle, DSP-Inferred)
     // =======================================================================
     wire is_mul = ~funct3[2]; // 0xx is MUL family
-    
+
     wire signed [32:0] mul_a = (funct3 == 3'b011) ? {1'b0, operand1} : {operand1[31], operand1};
     wire signed [32:0] mul_b = (funct3 == 3'b011 || funct3 == 3'b010) ? {1'b0, operand2} : {operand2[31], operand2};
     
@@ -118,7 +118,6 @@ module rv32m_alu (
     // =======================================================================
     wire combinational_busy = (state == S_IDLE) && start && is_div && !valid;
     assign busy   = (state != S_IDLE) || combinational_busy;
-    
     assign result = is_mul ? mul_result : (is_rem ? remainder[31:0] : quotient);
 
 endmodule

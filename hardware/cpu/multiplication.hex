@@ -1,11 +1,25 @@
-00F00093 // PC: 0x00 | addi x1, x0, 15 | x1 = 15 (0x0F)
-00500113 // PC: 0x04 | addi x2, x0, 5  | x2 = 5 (0x05)
-022081B3 // PC: 0x08 | mul x3, x1, x2  | x3 = 15 * 5 = 75 (0x4B)
-0220C233 // PC: 0x0C | div x4, x1, x2  | x4 = 15 / 5 = 3 (0x03)
-0220E2B3 // PC: 0x10 | rem x5, x1, x2  | x5 = 15 % 5 = 0 (0x00)
-00C00313 // PC: 0x14 | addi x6, x0, 12 | x6 = 12 (0x0C)
-00700393 // PC: 0x18 | addi x7, x0, 7  | x7 = 7 (0x07)
-02730433 // PC: 0x1C | mul x8, x6, x7  | x8 = 12 * 7 = 84 (0x54)
-027344B3 // PC: 0x20 | div x9, x6, x7  | x9 = 12 / 7 = 1 (0x01)
-02736533 // PC: 0x24 | rem x10, x6, x7 | x10 = 12 % 7 = 5 (0x05)
-00000063 // PC: 0x28 | beq x0, x0, 0   | Infinite Loop (Stop)
+01400093 // PC=0x00 | addi x1, x0, 20    # x1 = 20
+00300113 // PC=0x04 | addi x2, x0, 3     # x2 = 3
+FEC00193 // PC=0x08 | addi x3, x0, -20   # x3 = -20
+00000213 // PC=0x0C | addi x4, x0, 0     # x4 = 0
+022082B3 // PC=0x10 | mul  x5, x1, x2    # x5 = 20 * 3 = 60
+0220C333 // PC=0x14 | div  x6, x1, x2    # x6 = 20 / 3 = 6
+0220E3B3 // PC=0x18 | rem  x7, x1, x2    # x7 = 20 % 3 = 2
+00730433 // PC=0x1C | add  x8, x6, x7    # x8 = 6 + 2 = 8
+00108463 // PC=0x20 | beq  x1, x1, 8     # Jump over the next instruction! (To 0x28)
+0240C4B3 // PC=0x24 | div  x9, x1, x4    # TRAP! Div by zero. 
+06300493 // PC=0x28 | addi x9, x0, 99    # x9 = 99
+0221C533 // PC=0x2C | div  x10, x3, x2   # x10 = -20 / 3 = -6
+00054463 // PC=0x30 | blt  x10, x0, 8    # Jump to 0x38
+00100593 // PC=0x34 | addi x11, x0, 1    # TRAP! 
+00200593 // PC=0x38 | addi x11, x0, 2    # x11 = 2
+00200613 // PC=0x3C | addi x12, x0, 2    # x12 = 2 (Loop Counter)
+00A00693 // PC=0x40 | addi x13, x0, 10   # x13 = 10 (Numerator)
+// --- THE INNER LOOP ---
+02C6C733 // PC=0x44 | div  x14, x13, x12 # INNER LOOP START
+FFF60613 // PC=0x48 | addi x12, x12, -1  # Decrement loop counter
+FE061CE3 // PC=0x4C | bne  x12, x0, -8   # If x12 != 0, jump back 8 bytes to PC=0x44
+// --- THE OUTER RESTART ---
+FB1FF06F // PC=0x50 | jal  x0, -80       # JUMP BACK TO 0x00! Restart the whole program.
+00000013 // PC=0x54 | nop                # Padding so memory isn't empty
+00000013 // PC=0x58 | nop                # Padding
