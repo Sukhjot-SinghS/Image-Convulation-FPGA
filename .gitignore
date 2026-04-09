@@ -6,6 +6,7 @@
 *.wdb
 *.wcfg
 *.do
+*.vcd
 .Xil/
 
 # Ignore massive build directories
