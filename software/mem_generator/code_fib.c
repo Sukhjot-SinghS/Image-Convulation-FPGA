@@ -2,8 +2,8 @@
 
 int main()
 {
-  int n = 7;
-  int a = 0, b = 1, next, i;
+  volatile int n = 7;
+  volatile int a = 0, b = 1, next, i;
 
   if (n == 0)
     return a;

@@ -11,7 +11,7 @@ reg reset;
 // 100 MHz clock
 initial begin
 	clk = 0; 
-	$dumpfile("pipeline.vcd");
+	$dumpfile("../../pipeline.vcd");
 	$dumpvars(0, tb_pipeline);
 	forever #5 clk = ~clk;
 end

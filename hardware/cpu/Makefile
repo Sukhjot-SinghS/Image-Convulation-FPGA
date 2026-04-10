@@ -42,7 +42,7 @@ fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_sobel:
 clean:
 	@rm -rf xsim.dir/ .Xil/
 	@rm -f xvlog.log xvlog.pb xelab.log xelab.pb xsim.log xsim.jou xsim.pb
-	@rm -f pipeline.vcd
+	@rm -f ../../pipeline.vcd
 	@rm -f *.backup
 	@rm -f simulation_results*.txt
 	@rm -f *.log
