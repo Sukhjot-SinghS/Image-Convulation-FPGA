@@ -6,7 +6,7 @@ module top_fpga #(
 )(
     input  wire clk,        // fast board clock (e.g. 100 MHz)
     input  wire reset,      // active-low reset
-    output [15:0] led       // PC visualizer
+    output [15:0] led   ,    // PC visualizer
 	input  wire uart_rx_pin, // UART RX from PC
     output wire uart_tx_pin
 );

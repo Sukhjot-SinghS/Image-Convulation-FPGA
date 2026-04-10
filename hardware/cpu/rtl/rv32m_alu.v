@@ -24,7 +24,7 @@ module rv32m_alu (
     wire signed [32:0] mul_b = (funct3 == 3'b011 || funct3 == 3'b010) ? {1'b0, operand2} : {operand2[31], operand2};
     
     wire signed [65:0] full_product = mul_a * mul_b;
-    wire [31:0] mul_result = (funct3 == 3'b000) ? full_product[31:0] : full_product[63:32];=
+    wire [31:0] mul_result = (funct3 == 3'b000) ? full_product[31:0] : full_product[63:32];
 
     // =======================================================================
     // 2. ITERATIVE DIVIDER FSM (32 Cycles)
