@@ -53,7 +53,7 @@ module tb_uart();
     // -----------------------------------------------------------------------
     // DUT instantiation
     // -----------------------------------------------------------------------
-    top_uart dut (
+    uart_controller dut (
         .clk     (clk),
         .rst     (rst),
         .rx_pin  (rx_pin),
@@ -111,34 +111,7 @@ module tb_uart();
         else
             $display("UART FAIL: expected 0x41, got 0x%02X", rx_data_latched);
 
-
-
-        // --- Result ---
-        if (rx_received && rx_data_latched == 8'h41)
-            $display("UART PASS: received 0x%02X ('A')", rx_data_latched);
-        else if (!rx_received)
-            $display("UART FAIL: rx_ready pulse never observed");
-        else
-            $display("UART FAIL: expected 0x41, got 0x%02X", rx_data_latched);
-
-        // -----------------------------------------------------------------------
-        // Stimulus — Verify TX by transmitting 0x55 (alternating bits: 01010101)
-        // -----------------------------------------------------------------------
-        $display("Starting TX test...");
-        tx_data = 8'h55; 
-        tx_en   = 1'b1;  // Pulse enable high
-        #10;             // Wait 1 clock cycle
-        tx_en   = 1'b0;  // Pull enable low
-
-        // Wait for the transmission to finish (10 bits * 870ns per bit)
-        #10000; 
-        
-        $display("TX test complete. Check GTKWave for the tx_pin waveform!");
-
-
-
         $finish;
     end
 
 endmodule
-

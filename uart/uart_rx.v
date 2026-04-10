@@ -11,6 +11,8 @@
 //   [FIX-RX-4] Added synchronous reset input (rst) so the module is safely
 //               usable in synthesis (inline initialisation only works in sim).
 
+`timescale 1ns/1ps
+
 module uart_rx #(parameter CLKS_PER_BIT = 87) (
     input            clk,
     input            rst,        // synchronous active-high reset
