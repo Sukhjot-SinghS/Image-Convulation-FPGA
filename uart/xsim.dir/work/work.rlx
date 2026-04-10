@@ -1,0 +1,9 @@
+0.7
+2020.2
+Nov 14 2025
+19:37:27
+C:/Image_convulation_project/Image-Convulation-FPGA/uart/tb_uart.v,1775816027,verilog,,,,tb_uart,,,,,,,,
+C:/Image_convulation_project/Image-Convulation-FPGA/uart/top_uart.v,1775815116,verilog,,C:/Image_convulation_project/Image-Convulation-FPGA/uart/tb_uart.v,,top_uart,,,,,,,,
+C:/Image_convulation_project/Image-Convulation-FPGA/uart/uart_rx.v,1775816233,verilog,,C:/Image_convulation_project/Image-Convulation-FPGA/uart/uart_tx.v,,uart_rx,,,,,,,,
+C:/Image_convulation_project/Image-Convulation-FPGA/uart/uart_to_bram_ctrl.v,1775300146,verilog,,C:/Image_convulation_project/Image-Convulation-FPGA/uart/top_uart.v,,uart_to_bram_ctrl,,,,,,,,
+C:/Image_convulation_project/Image-Convulation-FPGA/uart/uart_tx.v,1774961290,verilog,,C:/Image_convulation_project/Image-Convulation-FPGA/uart/uart_to_bram_ctrl.v,,uart_tx,,,,,,,,

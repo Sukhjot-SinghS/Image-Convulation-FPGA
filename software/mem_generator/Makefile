@@ -21,7 +21,7 @@ READELF = riscv-none-elf-readelf
 
 # extra -->
 # Change from -march=rv32i to -march=rv32im
-CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O0 -Wall
+CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O1 -Wall
 # Add linker flags to use your link.ld script
 LDFLAGS = -nostdlib -T link.ld
 # <-- extra
