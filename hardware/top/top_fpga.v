@@ -121,20 +121,20 @@ module top_fpga #(
 
     
 
-	top_fsm u_coprocessor_island (
-        .clk        (slow_clk),
-        .reset      (reset),
+//	top_fsm u_coprocessor_island (
+//        .clk        (slow_clk),
+//        .reset      (reset),
         
-        // Physical UART Pins (Route these to the actual FPGA pins)
-        .rx_pin     (uart_rx_pin), // You need to add this to top_fpga inputs
-        .tx_pin     (uart_tx_pin), // You need to add this to top_fpga outputs
+//        // Physical UART Pins (Route these to the actual FPGA pins)
+//        .rx_pin     (uart_rx_pin), // You need to add this to top_fpga inputs
+//        .tx_pin     (uart_tx_pin), // You need to add this to top_fpga outputs
 
-        // The 5 Wires from your CPU (Sukhjot -> Satish Mediator)
-        .mem_write  (mmio_we),
-        .mem_read   (mmio_re),
-        .cpu_addr   (mmio_addr),
-        .cpu_wdata  (mmio_wdata),
-        .cpu_rdata  (mmio_rdata)
-    );
+//        // The 5 Wires from your CPU (Sukhjot -> Satish Mediator)
+//        .mem_write  (mmio_we),
+//        .mem_read   (mmio_re),
+//        .cpu_addr   (mmio_addr),
+//        .cpu_wdata  (mmio_wdata),
+//        .cpu_rdata  (mmio_rdata)
+//    );
 
 endmodule
