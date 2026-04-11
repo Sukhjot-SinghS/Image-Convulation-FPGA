@@ -1,0 +1,6 @@
+// Data memory - initialized to zero
+// No data memory needed for RV32M ALU tests
+00000000
+00000000
+00000000
+00000000

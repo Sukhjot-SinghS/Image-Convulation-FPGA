@@ -1,4 +1,11 @@
-module pipe
+//////////////// Including Stages ////////////////////////////
+`include "IF_ID.v"
+`include "execute.v"
+`include "wb.v"
+`include "hazard_unit.v"  
+`include "rv32m_alu.v"
+
+ module pipe
 #(
 	parameter [31:0]         	RESET = 32'h0000_0000
 )
@@ -14,21 +21,7 @@ module pipe
 	input       	[31: 0] inst_mem_read_data,
 	input       	[31: 0] dmem_read_data_temp,
 	input               	dmem_write_valid,
-	input               	dmem_read_valid,
-
-	output        dmem_re_o,
-    output [31:0] dmem_raddr_o,
-    output        dmem_we_o,
-    output [31:0] dmem_waddr_o,
-    output [31:0] dmem_wdata_o,
-    output [3:0]  dmem_wstrb_o,
-
-
-	output        mmio_write_enable,
-    output        mmio_read_enable,
-    output [31:0] mmio_write_address,
-    output [31:0] mmio_write_data,
-    input  [31:0] mmio_read_data
+	input               	dmem_read_valid
 );
     
 	//Declaring Wires and Registers
@@ -116,35 +109,16 @@ module pipe
 
 	wire                is_mext;
 
-	wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
-    wire is_mmio_read  = (dmem_read_address  >= 32'h8000_0000);
-
-    // Drive the MMIO output ports!
-    assign mmio_write_enable  = wb_mem_write && is_mmio_write;
-    assign mmio_read_enable   = mem_to_reg   && is_mmio_read;  // Satish's Read Enable (using load flag)
-    assign mmio_write_data    = wb_write_data;
-    assign mmio_write_address = dmem_write_address;
-    
-    // (Notice we deleted 'wire [31:0] mmio_read_data' because it is an input port now!)
 //------------------------------------------------------//
 assign dmem_write_address       	= wb_write_address; 	// assigning where to write
 assign dmem_read_address        	= alu_operand1 + execute_immediate;  // Assigning address to read from the data memory
 assign dmem_read_offset = dmem_read_address[1:0];
 assign dmem_read_ready          	= mem_to_reg;   // load instruction flag to read from memory
-assign dmem_write_ready         	= wb_mem_write && !is_mmio_write; 	// flag to write into the memory
+assign dmem_write_ready         	= wb_mem_write; 	// flag to write into the memory
 assign dmem_write_data          	= wb_write_data;	// assigning data to write
 assign dmem_write_byte          	= wb_write_byte;	// flag for writing the data bytes
-assign dmem_read_data = is_mmio_read ? mmio_read_data : dmem_read_data_temp;
-assign dmem_read_valid_checker  	= !is_mmio_read;
-
-assign dmem_re_o    = dmem_read_ready;
-assign dmem_raddr_o = dmem_read_address;
-assign dmem_we_o    = dmem_write_ready;
-assign dmem_waddr_o = dmem_write_address;
-assign dmem_wdata_o = dmem_write_data;
-assign dmem_wstrb_o = dmem_write_byte;
-
-
+assign dmem_read_data           	= dmem_read_data_temp;  	// data read from the memory
+assign dmem_read_valid_checker  	= 1'b1;
 // -----------------------------------------------------//
 
 // instantiating Instruction fetch module -----------------------
@@ -232,7 +206,7 @@ hazard_unit u_hazard (
     .external_stall (stall),
     .alu_busy       (alu_busy),
     .combined_stall (combined_stall)
-); 
+);
 
 
 ////////////////////////////////////////////////////////////
@@ -242,12 +216,11 @@ hazard_unit u_hazard (
 assign stall_read = combined_stall || !reset;
 
 
-// instantiating execute module 
+// instantiating execute module -----------------------------------
 execute execute (
 	// -----------------
 	// Clock / Reset
 	// -----------------
-	
 	.clk          	(clk),
 	.reset        	(reset),
 

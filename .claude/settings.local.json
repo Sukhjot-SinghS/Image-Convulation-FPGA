@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(iverilog -o sim_rv32m.out -I ./rtl ./rtl/*.v ./tb/tb_rv32m_alu.v)",
+      "Bash(iverilog -o sim_pipeline.out -I ./rtl ./rtl/*.v ./tb/tb_pipeline.v)",
+      "Bash(vvp sim_pipeline.out)",
+      "Bash(vvp sim_rv32m.out)",
+      "Bash(python3 -c ':*)",
+      "Read(//tmp/guidelines_unpacked/**)",
+      "Read(//c/tmp/**)"
+    ]
+  }
+}
