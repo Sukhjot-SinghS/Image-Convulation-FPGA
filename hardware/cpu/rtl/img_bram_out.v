@@ -1,45 +1,49 @@
 // ============================================================
-//  img_bram_in.v
+//  img_bram_out.v
 //  Author : Soumik Roy (Noob_Duck) — Group 18
 //
 //  Purpose:
-//    Stores the full 128×128 = 16,384 byte input image.
-//    Abhirup's uart_rx fills it one byte at a time.
-//    line_buffer reads from it one byte at a time.
+//    Stores the 126×126 = 15,876 byte output image.
+//    conv_engine writes one filtered pixel at a time.
+//    Abhirup's uart_tx reads it one byte at a time to send
+//    back to the Python GUI.
 //
 //  Two ports:
-//    WRITE port → Abhirup drives this (uart_rx side)
-//    READ  port → Soumik drives this (line_buffer side)
-//                 1-cycle read latency (real BRAM behaviour)
+//    WRITE port → Soumik drives this (conv_engine side)
+//    READ  port → Abhirup drives this (uart_tx side)
+//                 1-cycle read latency
 //
 //  Memory map:
-//    pixel(row, col) lives at address = row*128 + col
-//    address range 0 → 16383
+//    output pixel index 0 → 15875
+//    stored linearly, same order conv_engine produces them
 // ============================================================
 
-module img_bram_in (
+module img_bram_out (
     input  wire        clk,
 
-    // ── WRITE port (Abhirup — uart_rx controller) ────────────
-    input  wire        we,           // write enable — 1 when uart_rx has a byte
-    input  wire [13:0] wr_addr,      // byte address to write (0 → 16383)
-    input  wire [ 7:0] wr_data,      // pixel byte from uart_rx
+    // ── WRITE port (Soumik — conv_engine) ────────────────────
+    input  wire        we,           // = out_valid from conv_engine
+    input  wire [13:0] wr_addr,      // = pixel_idx_out from conv_engine
+    input  wire [ 7:0] wr_data,      // = pixel_out from conv_engine
 
-    // ── READ port (Soumik — line_buffer) ─────────────────────
-    input  wire [13:0] rd_addr,      // byte address line_buffer wants
-    output reg  [ 7:0] rd_data       // pixel byte — arrives ONE cycle later
+    // ── READ port (Abhirup — uart_tx controller) ──────────────
+    input  wire [13:0] rd_addr,      // byte address uart_tx wants
+    output reg  [ 7:0] rd_data       // filtered pixel — arrives ONE cycle later
 );
 
 // ─────────────────────────────────────────────────────────────
 //  BRAM array — 16384 bytes
-//  (* ram_style = "block" *) tells Vivado to use BRAM not LUTs
+//  (slightly larger than 15876 for alignment, unused slots
+//   at end are never read)
+//  (* ram_style = "block" *) forces Vivado to use BRAM
 // ─────────────────────────────────────────────────────────────
 (* ram_style = "block" *)
 reg [7:0] mem [0:16383];
 
 // ─────────────────────────────────────────────────────────────
 //  WRITE — synchronous
-//  Abhirup writes one byte per uart_rx byte received
+//  conv_engine writes one filtered pixel per cycle
+//  when out_valid=1
 // ─────────────────────────────────────────────────────────────
 always @(posedge clk) begin
     if (we)
@@ -48,15 +52,11 @@ end
 
 // ─────────────────────────────────────────────────────────────
 //  READ — synchronous (1-cycle latency)
-//  line_buffer puts address on rd_addr this cycle
-//  rd_data arrives NEXT cycle
-//  This matches the bram_rd_pending system in line_buffer
+//  Abhirup's uart_tx controller drives rd_addr
+//  rd_data arrives next cycle for uart_tx to send
 // ─────────────────────────────────────────────────────────────
 always @(posedge clk) begin
-    if (we && wr_addr == rd_addr)
-      rd_data <= wr_data;    // forward new value
-    else
-      rd_data <= mem[rd_addr];
-  end
+    rd_data <= mem[rd_addr];
+end
 
 endmodule
