@@ -90,6 +90,7 @@ wire [7:0]  p10, p11, p12;
 wire [7:0]  p20, p21, p22;
 wire        window_valid;
 wire [13:0] out_pixel_idx;
+wire        out_valid;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires — conv_engine
@@ -150,7 +151,7 @@ always @(posedge clk or negedge reset) begin
             bram_in_we      <= 1'b1;
             bram_in_wr_addr <= rx_byte_count;
 
-            if (rx_byte_count == 14'd16383) begin
+            if (rx_byte_count == IMG_SIZE - 1) begin
                 // full image received
                 rx_byte_count <= 14'd0;
                 img_load_done <= 1'b1;
@@ -172,7 +173,7 @@ end
 //    2 = SEND    → data stable, fire uart_tx
 // ─────────────────────────────────────────────────────────────
 reg  [13:0] tx_byte_count;
-reg  [1:0]  tx_fetch_state;
+reg         tx_pending;
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
@@ -180,45 +181,31 @@ always @(posedge clk or negedge reset) begin
         bram_out_rd_addr <= 14'd0;
         tx_start         <= 1'b0;
         tx_byte          <= 8'd0;
-        tx_fetch_state   <= 2'd0;
+        tx_pending       <= 1'b0;
     end
     else begin
-        tx_start <= 1'b0;   // default clear
-
+        tx_start <= 1'b0;
         if (fsm_state == TRANSMIT) begin
-
-            // ── 3-state BRAM fetch machine ────────────────
-            // State 0: give BRAM the address
-            if (tx_fetch_state == 2'd0 && !tx_done) begin
+            if (!tx_pending && !tx_done) begin
                 bram_out_rd_addr <= tx_byte_count;
-                tx_fetch_state   <= 2'd1;
+                tx_pending       <= 1'b1;
             end
-
-            // State 1: wait exactly 1 cycle for BRAM output
-            else if (tx_fetch_state == 2'd1) begin
-                tx_fetch_state   <= 2'd2;
+            if (tx_pending) begin
+                tx_byte    <= bram_out_rd_data;
+                tx_start   <= 1'b1;
+                tx_pending <= 1'b0;
             end
-
-            // State 2: data is stable, grab and send
-            else if (tx_fetch_state == 2'd2) begin
-                tx_byte        <= bram_out_rd_data;
-                tx_start       <= 1'b1;
-                tx_fetch_state <= 2'd0;
-            end
-
-            // ── increment counter when UART done ─────────
             if (tx_done) begin
-                if (tx_byte_count == 14'd15875)
+                if (tx_byte_count == OUT_SIZE - 1)
                     tx_byte_count <= 14'd0;
                 else
                     tx_byte_count <= tx_byte_count + 14'd1;
             end
-
         end
         else begin
             tx_byte_count    <= 14'd0;
             bram_out_rd_addr <= 14'd0;
-            tx_fetch_state   <= 2'd0;
+            tx_pending       <= 1'b0;
         end
     end
 end
@@ -277,7 +264,7 @@ always @(posedge clk or negedge reset) begin
             //            15876 bytes, one per uart_tx frame
             // ──────────────────────────────────────────────────
             TRANSMIT: begin
-                if (tx_done && tx_byte_count == 14'd15875)
+                if (tx_done && tx_byte_count == OUT_SIZE - 1)
                     fsm_state <= IDLE_DONE;
             end
 
@@ -353,7 +340,8 @@ line_buffer #(
     .p20(p20), .p21(p21), .p22(p22),
     .window_valid (window_valid),
     // output index to conv_engine
-    .out_pixel_idx(out_pixel_idx)
+    .out_pixel_idx(out_pixel_idx),
+    .out_valid    (out_valid)
 );
 
 // ── 5. conv_engine ───────────────────────────────────────────
