@@ -24,8 +24,8 @@ module top_fpga #(
     reg [25:0] clk_cnt;     // enough for 50 million
     reg        slow_clk;
 
-    always @(posedge clk or negedge reset) begin
-        if (!reset) begin
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
             clk_cnt  <= 26'd0;
             slow_clk <= 1'b0;
         end else begin
@@ -68,7 +68,7 @@ module top_fpga #(
     // ========================================================
     pipe DUT (
         .clk(slow_clk),              // Running on slow clock
-        .reset(reset),
+        .reset(!reset),
         .stall(1'b0),
         .exception(exception),
         .pc_out(pc_out),
