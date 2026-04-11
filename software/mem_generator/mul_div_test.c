@@ -320,3 +320,114 @@ int main() {
    - Signed/unsigned upper multiplication results: check typecasting as C does not truncate by default!
    - Negative result right shift: arithmetic (sign-extending) right shift must be used.
 */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+#include <stdint.h>
+
+// Volatile arrays force the compiler to write these to Data Memory
+// so we can see the results in the Vivado waveform.
+volatile int32_t mul_tests[10];
+volatile int32_t div_tests[10];
+volatile int32_t rem_tests[10];
+volatile int32_t edge_cases[10];
+
+int main() {
+    int32_t a, b;
+    
+    // ==========================================
+    // 1. Basic Multiplication
+    // ==========================================
+    mul_tests[0] = 12 * 5;        // Expected: 60
+    mul_tests[1] = -15 * 4;       // Expected: -60
+    mul_tests[2] = -10 * -10;     // Expected: 100
+    mul_tests[3] = 0 * 999;       // Expected: 0
+    mul_tests[4] = 0x7FFFFFFF * 1; // Max positive
+
+    // ==========================================
+    // 2. Basic Division
+    // ==========================================
+    div_tests[0] = 100 / 4;       // Expected: 25
+    div_tests[1] = -100 / 4;      // Expected: -25
+    div_tests[2] = 100 / -4;      // Expected: -25
+    div_tests[3] = -100 / -4;     // Expected: 25
+    div_tests[4] = 0 / 50;        // Expected: 0
+
+    // ==========================================
+    // 3. Remainders
+    // ==========================================
+    // Note: In C (and RISC-V), the sign of the remainder matches the dividend
+    rem_tests[0] = 10 % 3;        // Expected: 1
+    rem_tests[1] = -10 % 3;       // Expected: -1
+    rem_tests[2] = 10 % -3;       // Expected: 1
+    rem_tests[3] = -10 % -3;      // Expected: -1
+
+    // ==========================================
+    // 4. Rigorous Edge Cases
+    // ==========================================
+    int32_t min_int = 0x80000000; // -2147483648
+    int32_t minus_one = -1;
+    int32_t zero = 0;
+    int32_t positive_val = 55;
+
+    // A. Sign Overflow: MIN_INT / -1
+    // Expected: Quotient = MIN_INT, Remainder = 0
+    edge_cases[0] = min_int / minus_one; 
+    edge_cases[1] = min_int % minus_one;
+
+    // B. Divide by Zero: Positive / 0
+    // Expected: Quotient = -1 (0xFFFFFFFF), Remainder = Dividend (55)
+    edge_cases[2] = positive_val / zero;
+    edge_cases[3] = positive_val % zero;
+
+    // C. Divide by Zero: Negative / 0
+    // Expected: Quotient = -1, Remainder = Dividend (-55)
+    edge_cases[4] = -positive_val / zero;
+    edge_cases[5] = -positive_val % zero;
+
+    // Infinite loop to safely halt the processor
+    while(1) {
+        // Wait forever
+    }
+
+    return 0;
+}
+*/
