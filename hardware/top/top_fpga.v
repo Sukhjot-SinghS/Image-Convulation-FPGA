@@ -1,4 +1,9 @@
 `timescale 1ns / 1ps
+// ============================================================
+// top_fpga.v
+// Fully integrated top-level module
+// Combines CPU, MMIO, kernel regfile, FSM, memories
+// ============================================================
 
 module top_fpga #(
     parameter IMEMSIZE = 4096,
