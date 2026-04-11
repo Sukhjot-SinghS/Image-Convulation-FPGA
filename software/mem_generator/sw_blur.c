@@ -47,17 +47,89 @@
 
 
 
+// #include <stdint.h>
+
+// #define IMG_W 32
+// #define IMG_H 32
+
+// // Allocate arrays in Data Memory
+// uint8_t image_in[IMG_H][IMG_W];
+// uint8_t image_out[IMG_H][IMG_W];
+
+// // A dummy pointer in Data Memory to act as our "Stopwatch Trigger"
+// // Address 0x00000F00 is near the end of your 4KB memory, making it easy to spot!
+// #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
+
+// int main() {
+//     // 1. Initialize dummy image data
+//     for (int y = 0; y < IMG_H; y++) {
+//         for (int x = 0; x < IMG_W; x++) {
+//             image_in[y][x] = (uint8_t)((x + y) * 4);
+//         }
+//     }
+
+//     // ==========================================
+//     // 2. START TIMER FLAG
+//     // ==========================================
+//     BENCHMARK_FLAG = 0x11111111; 
+
+//     // 3. Perform 3x3 Box Blur (Pure Software)
+//     for (int y = 1; y < IMG_H - 1; y++) {
+//         for (int x = 1; x < IMG_W - 1; x++) {
+            
+//             uint32_t sum = 0;
+            
+//             // Accumulate the 3x3 window
+//             sum += image_in[y-1][x-1]; sum += image_in[y-1][x]; sum += image_in[y-1][x+1];
+//             sum += image_in[y][x-1];   sum += image_in[y][x];   sum += image_in[y][x+1];
+//             sum += image_in[y+1][x-1]; sum += image_in[y+1][x]; sum += image_in[y+1][x+1];
+
+//             // Divide by 9 for average
+//             image_out[y][x] = (uint8_t)(sum / 9);
+//         }
+//     }
+
+//     // ==========================================
+//     // 4. STOP TIMER FLAG
+//     // ==========================================
+//     BENCHMARK_FLAG = 0x99999999; 
+
+//     // Safely halt the processor
+//     while(1) {}
+//     return 0;
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #include <stdint.h>
 
 #define IMG_W 32
 #define IMG_H 32
 
-// Allocate arrays in Data Memory
 uint8_t image_in[IMG_H][IMG_W];
 uint8_t image_out[IMG_H][IMG_W];
 
-// A dummy pointer in Data Memory to act as our "Stopwatch Trigger"
-// Address 0x00000F00 is near the end of your 4KB memory, making it easy to spot!
 #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
 
 int main() {
@@ -73,19 +145,22 @@ int main() {
     // ==========================================
     BENCHMARK_FLAG = 0x11111111; 
 
-    // 3. Perform 3x3 Box Blur (Pure Software)
+    // 3. Perform 3x3 Gaussian Blur (Kernel sum = 16)
     for (int y = 1; y < IMG_H - 1; y++) {
         for (int x = 1; x < IMG_W - 1; x++) {
             
             uint32_t sum = 0;
             
-            // Accumulate the 3x3 window
-            sum += image_in[y-1][x-1]; sum += image_in[y-1][x]; sum += image_in[y-1][x+1];
-            sum += image_in[y][x-1];   sum += image_in[y][x];   sum += image_in[y][x+1];
-            sum += image_in[y+1][x-1]; sum += image_in[y+1][x]; sum += image_in[y+1][x+1];
+            // Gaussian Kernel Weights:
+            // 1  2  1
+            // 2  4  2
+            // 1  2  1
+            sum += (1 * image_in[y-1][x-1]) + (2 * image_in[y-1][x]) + (1 * image_in[y-1][x+1]);
+            sum += (2 * image_in[y][x-1])   + (4 * image_in[y][x])   + (2 * image_in[y][x+1]);
+            sum += (1 * image_in[y+1][x-1]) + (2 * image_in[y+1][x]) + (1 * image_in[y+1][x+1]);
 
-            // Divide by 9 for average
-            image_out[y][x] = (uint8_t)(sum / 9);
+            // Divide by 16 using a fast 4-bit right shift!
+            image_out[y][x] = (uint8_t)(sum >> 4);
         }
     }
 
@@ -94,7 +169,6 @@ int main() {
     // ==========================================
     BENCHMARK_FLAG = 0x99999999; 
 
-    // Safely halt the processor
     while(1) {}
     return 0;
 }

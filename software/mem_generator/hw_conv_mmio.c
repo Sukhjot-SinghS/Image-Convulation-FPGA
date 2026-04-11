@@ -1,25 +1,45 @@
 #include <stdint.h>
 
-// Mandated Hardware Memory Map
-volatile int32_t* const KERNEL_BASE = (int32_t*)0x80000000;
-volatile int32_t* const HW_START    = (int32_t*)0x80000028;
-volatile int32_t* const HW_STATUS   = (int32_t*)0x8000002C;
+#define HW_KERNEL_BASE  ((volatile uint32_t*)0x80000000)
+#define HW_CMD_START    (*(volatile uint32_t*)0x80000024)
+#define HW_STATUS_DONE  (*(volatile uint32_t*)0x80000028)
+#define HW_NORM_EN      (*(volatile uint32_t*)0x80000030)
 
-void load_kernel_and_start(int8_t kernel[9]) {
-    // 1. Load the 9 weights into MMIO registers
-    for(int i = 0; i < 9; i++) {
-        KERNEL_BASE[i] = (int32_t)kernel[i];
-    }
+// Vivado Waveform Stopwatch Trigger
+#define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
 
-    // 2. Fire the Start Signal
-    *HW_START = 1;
+volatile int8_t gaussian_blur[9] = { 1,  2,  1, 
+                                     2,  4,  2, 
+                                     1,  2,  1};
 
-    // 3. The Polling Loop (Mandatory volatile check)
-    // Wait until HW_STATUS becomes 1 (Done)
-    while (*HW_STATUS == 0) {
-        // CPU spins here until Soumik's engine finishes
-    }
+int main() {
+    // 1. Initialize Hardware Parameters
+    HW_NORM_EN = 1; // Enable division by 16
     
-    // 4. Reset start signal per Satish's bridge requirement
-    *HW_START = 0; 
+    for (int i = 0; i < 9; i++) {
+        HW_KERNEL_BASE[i] = (uint32_t)gaussian_blur[i];
+    }
+
+    // ==========================================
+    // 2. START TIMER FLAG
+    // ==========================================
+    BENCHMARK_FLAG = 0x11111111; 
+
+    // 3. Trigger Hardware Accelerator
+    HW_CMD_START = 1;
+    HW_CMD_START = 0; 
+
+    // 4. Poll Status
+    while (HW_STATUS_DONE == 0) {
+        // CPU yields while Soumik's accelerator crunches the pixels
+    }
+
+    // ==========================================
+    // 5. STOP TIMER FLAG
+    // ==========================================
+    BENCHMARK_FLAG = 0x99999999; 
+
+    // Safely halt CPU
+    while(1) {}
+    return 0;
 }
