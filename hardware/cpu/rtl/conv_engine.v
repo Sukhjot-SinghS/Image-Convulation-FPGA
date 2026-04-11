@@ -83,13 +83,22 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// CHANGE 2: processed_sum — applies shift for blur, passthrough for sobel/sharpen
-// norm_en = 0 → Sobel / Sharpen → use raw_sum directly
-// norm_en = 1 → Blur            → shift right 3 (divide by 8 ≈ divide by 9)
+// processed_sum — blur uses shift right 3 (divide by 8)
+// norm_en = 0 → Sobel/Sharpen
+// norm_en = 1 → Blur
 wire signed [20:0] processed_sum;
-assign processed_sum = norm_en ? (raw_sum >>> 3) : raw_sum;
+assign processed_sum = norm_en ? (raw_sum >>> 4) : raw_sum;
 
-// OUTPUT STAGE — clamp processed_sum to 0-255
+// abs_sum — take absolute value for Sobel edge detection
+// This ensures BOTH edges are visible:
+//   Dark→Light = positive → shows edge
+//   Light→Dark = negative → abs makes positive → also shows edge
+wire signed [20:0] abs_sum;
+assign abs_sum = (processed_sum < $signed(21'd0))
+                 ? -processed_sum
+                 :  processed_sum;
+
+// OUTPUT STAGE — clamp abs_sum to 0-255
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         pixel_out     <= 8'd0;
@@ -98,12 +107,11 @@ always @(posedge clk or negedge rst) begin
     end else begin
         out_valid     <= valid_s3;
         pixel_idx_out <= idx_s3;
-        if      (processed_sum < $signed(21'd0))
-            pixel_out <= 8'd0;
-        else if (processed_sum > $signed(21'd255))
+        // abs_sum is always positive so only check > 255
+        if (abs_sum > $signed(21'd255))
             pixel_out <= 8'd255;
         else
-            pixel_out <= processed_sum[7:0];
+            pixel_out <= abs_sum[7:0];
     end
 end
 
