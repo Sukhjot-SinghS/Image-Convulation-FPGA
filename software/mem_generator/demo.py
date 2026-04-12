@@ -11,15 +11,15 @@ def run_demo():
     # On Windows 11, check Device Manager for the correct COM port (e.g., 'COM3')
     # Use 115200 baud rate to match standard UART implementations
     try:
-        ser = serial.Serial('COM3', 115200, timeout=5)
-        print("Connected to Nexys A7 on COM3")
+        ser = serial.Serial('COM4', 115200, timeout=20)
+        print("Connected to Nexys A7 on COM4")
     except Exception as e:
         print(f"Error connecting: {e}")
         return
 
     # 2. Load and Prepare Image
     # The line_buffer is parameterized for 128x128 
-    img_path = 'test_64x64.pgm' # As seen in your repo structure
+    img_path = 'grayscale.jpg' # As seen in your repo structure
     try:
         # If your test image is 64x64, we must pad it or resize it to 128x128 
         # to match the hardware IMG_W/IMG_H parameters [cite: 229]
@@ -37,7 +37,7 @@ def run_demo():
     ser.write(img.tobytes())
     
     # Give the FPGA a moment to process (100MHz is fast, but UART is the bottleneck)
-    time.sleep(0.5)
+    time.sleep(5)
 
     # 4. Receive Processed Data
     # The conv_engine produces 126x126 valid pixels [cite: 76, 228]
