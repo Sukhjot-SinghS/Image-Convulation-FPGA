@@ -1,12 +1,3 @@
-//////////////// Including Stages ////////////////////////////
-`include "IF_ID.v"
-`include "execute.v"
-`include "wb.v"
-`include "hazard_unit.v"  
-`include "rv32m_alu.v"
-
-//////////////// Including OPCODES ////////////////////////////
-// `include "opcode.vh"
 
 
  module pipe
