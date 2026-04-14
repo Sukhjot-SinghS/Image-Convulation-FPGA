@@ -248,7 +248,7 @@ hazard_unit u_hazard (
     .external_stall (stall),
     .alu_busy       (alu_busy),
     .combined_stall (combined_stall)
-);
+); 
 
 
 ////////////////////////////////////////////////////////////
