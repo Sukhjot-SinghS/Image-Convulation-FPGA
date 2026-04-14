@@ -80,7 +80,11 @@
 uint8_t image_in[IMG_H][IMG_W];
 uint8_t image_out[IMG_H][IMG_W];
 
+// Vivado Waveform Stopwatch Trigger
 #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
+
+// UART Transmission Trigger (Sukhjot's MMIO Bridge)
+#define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
 
 // Simple absolute value function
 int32_t abs_val(int32_t x) {
@@ -125,6 +129,11 @@ int main() {
     // 4. STOP TIMER FLAG
     // ==========================================
     BENCHMARK_FLAG = 0x99999999; 
+
+    // ==========================================
+    // 5. START UART TRANSMISSION
+    // ==========================================
+    SW_DONE_REG = 1;
 
     // Safely halt the processor
     while(1) {}

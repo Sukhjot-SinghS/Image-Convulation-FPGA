@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+// Hardware Accelerator MMIO Addresses
 #define HW_KERNEL_BASE  ((volatile uint32_t*)0x80000000)
 #define HW_CMD_START    (*(volatile uint32_t*)0x80000024)
 #define HW_STATUS_DONE  (*(volatile uint32_t*)0x80000028)
@@ -7,6 +8,9 @@
 
 // Vivado Waveform Stopwatch Trigger
 #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
+
+// UART Transmission Trigger (Sukhjot's MMIO Bridge)
+#define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
 
 volatile int8_t gaussian_blur[9] = { 1,  2,  1, 
                                      2,  4,  2, 
@@ -38,6 +42,11 @@ int main() {
     // 5. STOP TIMER FLAG
     // ==========================================
     BENCHMARK_FLAG = 0x99999999; 
+
+    // ==========================================
+    // 6. START UART TRANSMISSION
+    // ==========================================
+    SW_DONE_REG = 1;
 
     // Safely halt CPU
     while(1) {}

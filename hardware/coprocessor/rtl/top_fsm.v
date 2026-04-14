@@ -61,8 +61,10 @@ localparam WAIT_START  = 3'd1;  // image ready, waiting for CPU start
 localparam PROCESSING  = 3'd2;  // conv running
 localparam TRANSMIT    = 3'd3;  // sending output image back
 localparam IDLE_DONE   = 3'd4;  // finished, back to wait
+localparam DRAIN       = 3'd5;  // 4-cycle pipeline drain
 
 reg [2:0] fsm_state;
+reg [2:0] drain_count;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires — UART RX side
@@ -103,6 +105,7 @@ wire [13:0] pixel_idx_out;
 wire signed [7:0] k0, k1, k2;
 wire signed [7:0] k3, k4, k5;
 wire signed [7:0] k6, k7, k8;
+wire        norm_en;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires — mmio_decoder
@@ -110,6 +113,7 @@ wire signed [7:0] k6, k7, k8;
 wire        kernel_we;
 wire [3:0]  kernel_addr;
 wire [31:0] kernel_wdata;
+wire        sw_done;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires — img_bram_out
@@ -148,7 +152,7 @@ always @(posedge clk or negedge reset) begin
             bram_in_we      <= 1'b1;
             bram_in_wr_addr <= rx_byte_count;
 
-            if (rx_byte_count == 14'd16383) begin
+            if (rx_byte_count == IMG_SIZE - 1) begin
                 // full image received
                 rx_byte_count <= 14'd0;
                 img_load_done <= 1'b1;
@@ -164,45 +168,40 @@ end
 //  Output transmit counter
 //  After lb_done, reads img_bram_out and feeds uart_tx
 //  byte by byte 0→15875
+//  tx_fetch_state:
+//    0 = IDLE    → give BRAM the address
+//    1 = WAIT    → wait 1 cycle for BRAM to respond
+//    2 = SEND    → data stable, fire uart_tx
 // ─────────────────────────────────────────────────────────────
 reg  [13:0] tx_byte_count;
-reg         tx_pending;     // waiting for BRAM read latency
+reg         tx_pending;
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
-        tx_byte_count  <= 14'd0;
+        tx_byte_count    <= 14'd0;
         bram_out_rd_addr <= 14'd0;
-        tx_start       <= 1'b0;
-        tx_byte        <= 8'd0;
-        tx_pending     <= 1'b0;
+        tx_start         <= 1'b0;
+        tx_byte          <= 8'd0;
+        tx_pending       <= 1'b0;
     end
     else begin
-        tx_start <= 1'b0;   // default clear
-
+        tx_start <= 1'b0;
         if (fsm_state == TRANSMIT) begin
-
             if (!tx_pending && !tx_done) begin
-                // issue read address to img_bram_out
                 bram_out_rd_addr <= tx_byte_count;
                 tx_pending       <= 1'b1;
             end
-
             if (tx_pending) begin
-                // byte arrived from BRAM (1-cycle latency)
                 tx_byte    <= bram_out_rd_data;
                 tx_start   <= 1'b1;
                 tx_pending <= 1'b0;
             end
-
             if (tx_done) begin
-                if (tx_byte_count == 14'd15875) begin
+                if (tx_byte_count == OUT_SIZE - 1)
                     tx_byte_count <= 14'd0;
-                end
-                else begin
+                else
                     tx_byte_count <= tx_byte_count + 14'd1;
-                end
             end
-
         end
         else begin
             tx_byte_count    <= 14'd0;
@@ -238,6 +237,8 @@ always @(posedge clk or negedge reset) begin
             WAIT_START: begin
                 if (lb_start)
                     fsm_state <= PROCESSING;
+                else if (sw_done)
+                    fsm_state <= TRANSMIT;
             end
 
             // ──────────────────────────────────────────────────
@@ -245,8 +246,20 @@ always @(posedge clk or negedge reset) begin
             //              wait for lb_done pulse
             // ──────────────────────────────────────────────────
             PROCESSING: begin
-                if (lb_done)
+                if (lb_done) begin
+                    fsm_state <= DRAIN;
+                    drain_count <= 3'd0;
+                end
+            end
+
+            // ──────────────────────────────────────────────────
+            // DRAIN — wait 4 cycles for conv_engine pipeline
+            // ──────────────────────────────────────────────────
+            DRAIN: begin
+                if (drain_count == 3'd4)
                     fsm_state <= TRANSMIT;
+                else
+                    drain_count <= drain_count + 3'd1;
             end
 
             // ──────────────────────────────────────────────────
@@ -254,7 +267,7 @@ always @(posedge clk or negedge reset) begin
             //            15876 bytes, one per uart_tx frame
             // ──────────────────────────────────────────────────
             TRANSMIT: begin
-                if (tx_done && tx_byte_count == 14'd15875)
+                if (tx_done && tx_byte_count == OUT_SIZE - 1)
                     fsm_state <= IDLE_DONE;
             end
 
@@ -347,6 +360,7 @@ conv_engine ce_inst (
     .k3(k3), .k4(k4), .k5(k5),
     .k6(k6), .k7(k7), .k8(k8),
     // control
+    .norm_en      (1'b0),
     .window_valid (window_valid),
     .pixel_idx_in (out_pixel_idx),
     // outputs
@@ -378,7 +392,8 @@ kernel_regfile krf_inst (
     // to conv_engine
     .k0(k0), .k1(k1), .k2(k2),
     .k3(k3), .k4(k4), .k5(k5),
-    .k6(k6), .k7(k7), .k8(k8)
+    .k6(k6), .k7(k7), .k8(k8),
+    .norm_en(norm_en)
 );
 
 // ── 8. mmio_decoder ──────────────────────────────────────────
@@ -398,6 +413,7 @@ mmio_decoder mmio_inst (
     .kernel_wdata (kernel_wdata),
     // to line_buffer
     .start        (lb_start),
+    .sw_done      (sw_done),
     // from line_buffer
     .done_in      (lb_done)
 );
