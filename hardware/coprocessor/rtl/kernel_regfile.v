@@ -11,7 +11,8 @@ module kernel_regfile (
     // 3x3 Kernel outputs to the Convolution Engine
     output reg signed [7:0] k0, k1, k2,
     output reg signed [7:0] k3, k4, k5,
-    output reg signed [7:0] k6, k7, k8
+    output reg signed [7:0] k6, k7, k8,
+    output reg              norm_en
 );
 
     always @(posedge clk or negedge rst) begin
@@ -23,6 +24,7 @@ module kernel_regfile (
             k0 <= 8'sd0; k1 <= 8'sd0; k2 <= 8'sd0;
             k3 <= 8'sd0; k4 <= 8'sd1; k5 <= 8'sd0;
             k6 <= 8'sd0; k7 <= 8'sd0; k8 <= 8'sd0;
+            norm_en <= 1'b0;
         end else if (we) begin
             // Mock write behavior
             case (addr)
@@ -35,6 +37,7 @@ module kernel_regfile (
                 4'd6: k6 <= wdata[7:0];
                 4'd7: k7 <= wdata[7:0];
                 4'd8: k8 <= wdata[7:0];
+                4'd10: norm_en <= wdata[0];
             endcase
         end
     end
