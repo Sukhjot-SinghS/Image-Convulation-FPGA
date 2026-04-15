@@ -4,11 +4,15 @@ module mmio_decoder (
     input  wire        clk,
     input  wire        reset,        
 
-    // CPU Interface (Fixed names to match top_fsm.v!)
-    input  wire [31:0] addr,
+    // CPU Interface (Split read/write addresses!)
+    input  wire [31:0] waddr,
+    input  wire [31:0] raddr,
+
     input  wire [31:0] wdata,
     input  wire        mem_write,
     input  wire        mem_read,
+    
+    // BUG 1 FIX: rdata is now a reg updated on posedge clk (1-cycle latency)
     output reg  [31:0] rdata,
 
     // Kernel Regfile Interface
@@ -18,49 +22,55 @@ module mmio_decoder (
 
     // Control Signals
     output reg         start,
-    output reg         sw_done,      // <--- ADDED SOFTWARE DOORBELL!
-    input  wire        done_in       // <--- Fixed to done_in
+    output reg         sw_done,      // Software Doorbell!
+    input  wire        done_in       
 );
 
 localparam KERNEL_BASE  = 32'h80000000;
 localparam START_ADDR   = 32'h80000024;
 localparam STATUS_ADDR  = 32'h80000028;
 localparam NORM_ADDR    = 32'h80000030;
-localparam SW_DONE_ADDR = 32'h80000034; // New doorbell address!
+localparam SW_DONE_ADDR = 32'h80000034; 
 
 reg done_reg;
 
 always @(posedge clk) begin
     if (!reset) begin
-        start       <= 0;
-        sw_done     <= 0;
-        kernel_we   <= 0;
-        done_reg    <= 0;
-        kernel_index<= 0;
-        kernel_wdata<= 0;
+        start        <= 0;
+        sw_done      <= 0;
+        kernel_we    <= 0;
+        done_reg     <= 0;
+        kernel_index <= 0;
+        kernel_wdata <= 0;
+        rdata        <= 32'd0; // Initialize read data
     end 
     else begin
+        // Default to 0 so they pulse for exactly 1 cycle
         kernel_we <= 0;
         start     <= 0;
-        sw_done   <= 0; // Default to 0 so it pulses for exactly 1 cycle
+        sw_done   <= 0; 
 
-        // 1. Hardware Coprocessor Start
-        if (mem_write && addr == START_ADDR && wdata[0])
+        // ==========================================
+        // 1. WRITE LOGIC (Uses 'waddr')
+        // ==========================================
+        
+        // Hardware Coprocessor Start
+        if (mem_write && waddr == START_ADDR && wdata[0])
             start <= 1;
             
-        // 2. Software Mode Done Doorbell
-        if (mem_write && addr == SW_DONE_ADDR && wdata[0])
+        // Software Mode Done Doorbell
+        if (mem_write && waddr == SW_DONE_ADDR && wdata[0])
             sw_done <= 1;
 
-        // 3. Kernel Coefficient Writes
-        if (mem_write && addr >= KERNEL_BASE && addr < KERNEL_BASE + 36) begin
+        // Kernel Coefficient Writes
+        if (mem_write && waddr >= KERNEL_BASE && waddr < KERNEL_BASE + 36) begin
             kernel_we    <= 1;
-            kernel_index <= (addr - KERNEL_BASE) >> 2;
+            kernel_index <= (waddr - KERNEL_BASE) >> 2;
             kernel_wdata <= wdata;
         end
 
-        // 4. Normalization Toggle Write
-        if (mem_write && addr == NORM_ADDR) begin
+        // Normalization Toggle Write
+        if (mem_write && waddr == NORM_ADDR) begin
             kernel_we    <= 1;
             kernel_index <= 4'd10;
             kernel_wdata <= wdata;
@@ -71,14 +81,21 @@ always @(posedge clk) begin
             done_reg <= 0;
         else if (done_in)
             done_reg <= 1;
-    end
-end
 
-always @(*) begin
-    if (mem_read && addr == STATUS_ADDR)
-        rdata = {31'b0, done_reg};
-    else
-        rdata = 32'd0;
+        // ==========================================
+        // 2. READ LOGIC (Uses 'raddr')
+        // ==========================================
+        // BUG 1 & 2 FIX: Synchronous read using raddr matching DMEM latency.
+        if (mem_read) begin
+            if (raddr == STATUS_ADDR)
+                rdata <= {31'b0, done_reg};
+            else
+                rdata <= 32'd0;
+        end else begin
+            rdata <= 32'd0;
+        end
+        
+    end
 end
 
 endmodule

@@ -18,7 +18,8 @@ module top_fsm #(
 
     // ── CPU pipeline interface (from pipeline.v) ─────────────
     input  wire        mem_write,   // CPU write enable
-    input  wire        mem_read,    // CPU read enable
+    input  wire        mem_read, 
+    input  wire [31:0] cpu_raddr,   // CPU read enable
     input  wire [31:0] cpu_addr,    // CPU address bus
     input  wire [31:0] cpu_wdata,   // CPU write data
     output wire [31:0] cpu_rdata    // CPU read data
@@ -45,11 +46,11 @@ reg [2:0] drain_count;
 // ─────────────────────────────────────────────────────────────
 //  THE BRAM HIJACK LOGIC (Fixed for Multi-Driver & Timing Loops)
 // ─────────────────────────────────────────────────────────────
-wire cpu_reads_bram_in   = (cpu_addr[31:16] == 16'hC000) && mem_read;
+// Use cpu_raddr for reading!
+wire cpu_reads_bram_in   = (cpu_raddr[31:16] == 16'hC000) && mem_read;
 wire cpu_writes_bram_out = (cpu_addr[31:16] == 16'hC001) && mem_write;
 
-// Mux the Read port of BRAM_IN (Hardware vs CPU)
-wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_addr[13:0] : bram_in_rd_addr;
+wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_raddr[13:0] : bram_in_rd_addr;
 
 // Mux the Write port of BRAM_OUT (Hardware vs CPU)
 wire [13:0] actual_bram_out_wr_addr = cpu_writes_bram_out ? cpu_addr[13:0] : pixel_idx_out;
@@ -63,6 +64,7 @@ assign cpu_rdata = cpu_reads_bram_in ? {24'd0, bram_in_rd_data} : 32'd0;
 //  Internal wires 
 // ─────────────────────────────────────────────────────────────
 wire        rx_dv;          
+wire sw_done;
 wire [7:0]  rx_byte;        
 reg         bram_in_we;
 reg  [13:0] bram_in_wr_addr;
@@ -193,6 +195,9 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
+                else if (sw_done) begin    // <-- BUG 3 FIX: Software backdoor exit
+                    fsm_state <= TRANSMIT;
+                end
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
@@ -298,9 +303,11 @@ mmio_decoder mmio_inst (
     .clk          (clk),
     .reset        (reset),
     .mem_write    (mem_write),
-    .addr         (cpu_addr),
+    .waddr        (cpu_addr),   // Assuming you renamed 'addr' to 'waddr' in mmio_decoder
+    .raddr        (cpu_raddr),
     .wdata        (cpu_wdata),
     .mem_read     (mem_read),
+
     
     // THIS IS THE FIX. We leave .rdata empty. It kills the timing loop and multi-driver error.
     .rdata        (), 

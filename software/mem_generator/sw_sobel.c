@@ -1,93 +1,106 @@
-// ==============================================================================
-// sw_sobel.c
-// Bare-metal Sobel Edge Detection for custom RISC-V CPU.
-// Reads 128x128 from BRAM_IN, computes 3x3 Sobel, writes 126x126 to BRAM_OUT.
-// ==============================================================================
+/*
+ * sw_sobel.c  —  Software Gaussian Blur (3x3, kernel sum=16)
+ *
+ * Memory map (from top_fsm.v BRAM hijack logic):
+ *   Read  pixel from img_bram_in  → load  from 0xC000_0000 + pixel_index
+ *   Write pixel to  img_bram_out  → store to  0xC001_0000 + pixel_index
+ *
+ * Image:  128 × 128 input  → pixel index = row*128 + col  (0..16383)
+ * Output: 126 × 126        → pixel index = (row-1)*126 + (col-1)  (0..15875)
+ *
+ * Benchmark flags (Vivado waveform stopwatch):
+ *   0x0000_0F00 → write 0x11111111 to START timer
+ *   0x0000_0F00 → write 0x99999999 to STOP  timer
+ *
+ * SW_DONE doorbell:
+ *   0x8000_0034 → write 1  →  top_fsm transitions WAIT_START → TRANSMIT
+ */
 
-// Memory Mapped Pointers directly to the Hardware BRAMs
-volatile unsigned char *bram_in  = (volatile unsigned char *)0xC0000000;
-volatile unsigned char *bram_out = (volatile unsigned char *)0xC0010000;
-volatile int *sw_done_reg        = (volatile int *)0x80000034;
+ #include <stdint.h>
 
-int main() {
-    int y, x;
-    int p00, p01, p02;
-    int p10, p11, p12;
-    int p20, p21, p22;
-    int sumX, sumY, magnitude;
-    int out_idx;
-
-    // Loop through the image, skipping the 1-pixel outer border
-    // Input is 128x128, Output becomes 126x126
-    for (y = 1; y < 127; y++) {
-        for (x = 1; x < 127; x++) {
-            
-            // ------------------------------------------------
-            // 1. Fetch 3x3 Window directly from BRAM_IN
-            // ------------------------------------------------
-            p00 = bram_in[(y - 1) * 128 + (x - 1)];
-            p01 = bram_in[(y - 1) * 128 + (x)];
-            p02 = bram_in[(y - 1) * 128 + (x + 1)];
-
-            p10 = bram_in[(y) * 128 + (x - 1)];
-            p11 = bram_in[(y) * 128 + (x)];
-            p12 = bram_in[(y) * 128 + (x + 1)];
-
-            p20 = bram_in[(y + 1) * 128 + (x - 1)];
-            p21 = bram_in[(y + 1) * 128 + (x)];
-            p22 = bram_in[(y + 1) * 128 + (x + 1)];
-
-            // ------------------------------------------------
-            // 2. Compute Sobel Gx (Horizontal edges)
-            // ------------------------------------------------
-            // Kernel: 
-            // -1  0  1
-            // -2  0  2
-            // -1  0  1
-            sumX = (p00 * -1) + (p02 * 1) +
-                   (p10 * -2) + (p12 * 2) +
-                   (p20 * -1) + (p22 * 1);
-
-            // ------------------------------------------------
-            // 3. Compute Sobel Gy (Vertical edges)
-            // ------------------------------------------------
-            // Kernel:
-            // -1 -2 -1
-            //  0  0  0
-            //  1  2  1
-            sumY = (p00 * -1) + (p01 * -2) + (p02 * -1) +
-                   (p20 * 1) + (p21 * 2) + (p22 * 1);
-
-            // ------------------------------------------------
-            // 4. Absolute Magnitude & Clamping
-            // ------------------------------------------------
-            // Bare-metal absolute value (no math.h needed)
-            if (sumX < 0) sumX = -sumX;
-            if (sumY < 0) sumY = -sumY;
-
-            magnitude = sumX + sumY;
-
-            // Clamp to maximum 8-bit pixel value
-            if (magnitude > 255) {
-                magnitude = 255;
-            }
-
-            // ------------------------------------------------
-            // 5. TIGHT PACKING: Write to BRAM_OUT
-            // ------------------------------------------------
-            // We map the (1..126) coordinate down to a (0..125) flat array
-            out_idx = (y - 1) * 126 + (x - 1);
-            bram_out[out_idx] = (unsigned char)magnitude;
-        }
-    }
-
-    // ------------------------------------------------
-    // 6. Ring the Doorbell
-    // ------------------------------------------------
-    // Tells top_fsm to switch to TRANSMIT state
-    *sw_done_reg = 1;
-
-    // Halt the CPU
-    while(1);
-    return 0;
-}
+ #define IMG_W     128
+ #define IMG_H     128
+ #define OUT_W     126   /* IMG_W - 2, border pixels skipped */
+ #define OUT_H     126   /* IMG_H - 2, border pixels skipped */
+ 
+ /* BRAM pixel access via MMIO */
+ #define BRAM_IN_BASE   ((volatile uint8_t*)0xC0000000)
+ #define BRAM_OUT_BASE  ((volatile uint8_t*)0xC0010000)
+ 
+ /* Benchmark stopwatch */
+ #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00)
+ 
+ /* Software done doorbell → triggers top_fsm TRANSMIT */
+ #define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
+ 
+ /*
+  * Read a pixel from img_bram_in.
+  * BRAM has 1-cycle latency — we do a dummy read first to latch the address,
+  * then read again. Because our pipeline has a load-use stall this works
+  * correctly: the second read sees the stable registered output.
+  */
+ static inline uint8_t read_pixel(int row, int col)
+ {
+     volatile uint8_t *addr = &BRAM_IN_BASE[row * IMG_W + col];
+     (void)(*addr);          /* first access — latches address into BRAM register */
+     return *addr;           /* second access — data is now stable */
+ }
+ 
+ /*
+  * Write a result pixel into img_bram_out.
+  * Output pixel index = (row-1)*OUT_W + (col-1)
+  * because we skip the border row/col.
+  */
+ static inline void write_pixel(int row, int col, uint8_t val)
+ {
+     BRAM_OUT_BASE[(row - 1) * OUT_W + (col - 1)] = val;
+ }
+ 
+ int main(void)
+ {
+     /* ── START TIMER ────────────────────────────────────────── */
+     for(volatile int delay = 0; delay < 50000000; delay++);
+     BENCHMARK_FLAG = 0x11111111;
+ 
+     /*
+      * 3×3 Gaussian blur kernel:
+      *   1  2  1
+      *   2  4  2
+      *   1  2  1   (sum = 16, divide by shifting right 4)
+      *
+      * We skip the outer border (row 0, row 127, col 0, col 127).
+      * Valid output rows: 1..126  →  126 rows
+      * Valid output cols: 1..126  →  126 cols
+      */
+     int row, col;
+     for (row = 1; row < IMG_H - 1; row++) {
+         for (col = 1; col < IMG_W - 1; col++) {
+ 
+             uint32_t sum =
+                 (uint32_t)read_pixel(row-1, col-1)       +
+                 (uint32_t)read_pixel(row-1, col  ) * 2u  +
+                 (uint32_t)read_pixel(row-1, col+1)       +
+                 (uint32_t)read_pixel(row,   col-1) * 2u  +
+                 (uint32_t)read_pixel(row,   col  ) * 4u  +
+                 (uint32_t)read_pixel(row,   col+1) * 2u  +
+                 (uint32_t)read_pixel(row+1, col-1)       +
+                 (uint32_t)read_pixel(row+1, col  ) * 2u  +
+                 (uint32_t)read_pixel(row+1, col+1);
+ 
+             /* divide by 16 */
+             uint8_t result = (uint8_t)(sum >> 4);
+ 
+             write_pixel(row, col, result);
+         }
+     }
+ 
+     /* ── STOP TIMER ─────────────────────────────────────────── */
+     BENCHMARK_FLAG = 0x99999999;
+ 
+     /* ── SIGNAL DONE → top_fsm goes to TRANSMIT ─────────────── */
+     SW_DONE_REG = 1;
+ 
+     /* Halt */
+     while (1) {}
+     return 0;
+ }
