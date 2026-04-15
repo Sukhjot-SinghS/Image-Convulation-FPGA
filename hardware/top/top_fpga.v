@@ -1,8 +1,6 @@
 `timescale 1ns / 1ps
 // ============================================================
 // top_fpga.v
-// Fully integrated top-level module
-// Combines CPU, MMIO, kernel regfile, FSM, memories
 // ============================================================
 
 module top_fpga #(
@@ -17,26 +15,20 @@ module top_fpga #(
 );
 
     wire [31:0] pc_out;
-
-    // CLEAN LED ASSIGNMENT: Direct wire to the PC output
     assign led = pc_out[15:0]; 
 
-    // ========================================================
     // MASTER RESET INVERTER
-    // N17 is Active-High. Our modules expect Active-Low (negedge).
-    // ========================================================
     wire sys_resetn = ~reset; 
+    
     reg [1:0] clk_div = 2'b00;
     always @(posedge clk) begin
         clk_div <= clk_div + 1;
     end
     wire clk_25mhz = clk_div[1];
-    // ========================================================
+
     // PIPE ↔ MEMORY WIRES
-    // ========================================================
     wire [31:0] inst_mem_read_data;
     wire        inst_mem_is_valid = 1'b1;
-
     wire [31:0] dmem_read_data;
     wire        dmem_write_valid  = 1'b1;
     wire        dmem_read_valid   = 1'b1;
@@ -46,31 +38,22 @@ module top_fpga #(
     wire [31:0] dmem_raddr, dmem_waddr, dmem_wdata;
     wire [3:0]  dmem_wstrb;
 
-    // ========================================================
-    // PIPE ↔ SATISH'S MMIO WIRES
-    // ========================================================
+    // PIPE ↔ MMIO WIRES
     wire        mmio_we;
     wire        mmio_re;
     wire [31:0] mmio_addr;
     wire [31:0] mmio_wdata;
     wire [31:0] mmio_rdata;
 
-
-    // ========================================================
-    // 1. PIPELINE CPU (Running at 100 MHz!)
-    // ========================================================
+    // 1. PIPELINE CPU
     pipe DUT (
         .clk                (clk_25mhz),             
         .reset              (sys_resetn),
         .stall              (1'b0),
         .exception          (exception),
         .pc_out             (pc_out),
-
-        // Instruction Memory
         .inst_mem_is_valid  (inst_mem_is_valid),
         .inst_mem_read_data (inst_mem_read_data),
-
-        // Data Memory (RAM)
         .dmem_read_valid    (dmem_read_valid),
         .dmem_write_valid   (dmem_write_valid),
         .dmem_read_data_temp(dmem_read_data),
@@ -80,27 +63,21 @@ module top_fpga #(
         .dmem_waddr_o       (dmem_waddr),
         .dmem_wdata_o       (dmem_wdata),
         .dmem_wstrb_o       (dmem_wstrb),
-
-        // MMIO Bridge
         .mmio_write_enable  (mmio_we),
         .mmio_read_enable   (mmio_re),
         .mmio_write_address (mmio_addr),
         .mmio_write_data    (mmio_wdata),
-        .mmio_read_data     (32'h0000_0000)
+        .mmio_read_data     (mmio_rdata)
     );
-
-    // ========================================================
+    
     // 2. INSTRUCTION MEMORY
-    // ========================================================
     instr_mem IMEM (
         .clk    (clk_25mhz),                    
         .pc     (pc_out),
         .instr  (inst_mem_read_data)
     );
 
-    // ========================================================
     // 3. DATA MEMORY 
-    // ========================================================
     data_mem DMEM (
         .clk    (clk_25mhz),            
         .re     (dmem_re),
@@ -112,18 +89,12 @@ module top_fpga #(
         .wstrb  (dmem_wstrb)
     );
 
-    // ========================================================
-    // 4. COPROCESSOR ISLAND & FSM (Running at 100 MHz!)
-    // ========================================================
+    // 4. COPROCESSOR ISLAND & FSM
     top_fsm u_coprocessor_island (
         .clk        (clk_25mhz),
         .reset      (sys_resetn),
-        
-        // Physical UART Pins
         .rx_pin     (uart_rx_pin), 
         .tx_pin     (uart_tx_pin), 
-
-        // The 5 Wires from your CPU
         .mem_write  (mmio_we),
         .mem_read   (mmio_re),
         .cpu_addr   (mmio_addr),
