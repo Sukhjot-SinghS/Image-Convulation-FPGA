@@ -53,10 +53,7 @@ end
 //  This matches the bram_rd_pending system in line_buffer
 // ─────────────────────────────────────────────────────────────
 always @(posedge clk) begin
-    if (we && wr_addr == rd_addr)
-      rd_data <= wr_data;    // forward new value
-    else
-      rd_data <= mem[rd_addr];
-  end
+    rd_data <= mem[rd_addr];
+end
 
 endmodule

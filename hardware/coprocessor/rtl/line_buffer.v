@@ -175,7 +175,7 @@ always @(posedge clk or negedge reset) begin
             //   Now issue address for col N.
             // ------------------------------------------------
             LOAD_ROW0: begin
-                if (load_col == 7'd126) begin
+                if (load_col == 7'd127) begin
                     // Last byte of row 0 is being absorbed above.
                     // Start loading row 1 col 0 next cycle.
                     load_col        <= 7'd0;
@@ -197,7 +197,7 @@ always @(posedge clk or negedge reset) begin
 
             // ------------------------------------------------
             LOAD_ROW1: begin
-                if (load_col == 7'd126) begin
+                if (load_col == 7'd127) begin
                     load_col        <= 7'd0;
                     bram_rd_addr    <= bram_addr(7'd2, 7'd0);
                     bram_rd_pending <= 1'b1;
@@ -216,7 +216,7 @@ always @(posedge clk or negedge reset) begin
 
             // ------------------------------------------------
             LOAD_ROW2: begin
-                if (load_col == 7'd126) begin
+                if (load_col == 7'd127) begin
                     // All 3 rows loaded — begin sliding
                     load_col <= 7'd0;
                     col_ptr  <= 7'd0;   // window left edge starts at col 0

@@ -21,3 +21,4 @@
 
 # Keep the Vivado project file, but ignore its auto-generated backups
 *.xpr.backup*
+dfx_runtime.txt

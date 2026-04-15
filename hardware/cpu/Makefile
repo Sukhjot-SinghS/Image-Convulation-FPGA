@@ -39,6 +39,9 @@ fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_sobel:
 	# 3. Run Simulation (log to stdout to see $display)
 	$(XSIM) $(SNAPSHOT) -tclbatch xsim_cfg.tcl -log stdout
 
+	# 4. Launch GTKWave automatically
+	gtkwave pipeline.vcd &
+
 clean:
 	@rm -rf xsim.dir/ .Xil/
 	@rm -f xvlog.log xvlog.pb xelab.log xelab.pb xsim.log xsim.jou xsim.pb

@@ -107,7 +107,10 @@ conv_engine ce_inst (
     .k3(k3), .k4(k4), .k5(k5),
     .k6(k6), .k7(k7), .k8(k8),
     .window_valid (window_valid),
+<<<<<<< HEAD
     .norm_en      (1'b0),
+=======
+>>>>>>> d6547f450f86caf4091a123235d19fd79ecffdfb
     .pixel_idx_in (out_pixel_idx),
     .pixel_out    (pixel_out),
     .out_valid    (ce_out_valid),
