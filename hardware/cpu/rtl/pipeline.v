@@ -1,4 +1,6 @@
-module pipe
+
+
+ module pipe
 #(
 	parameter [31:0]         	RESET = 32'h0000_0000
 )
@@ -8,6 +10,10 @@ module pipe
 	input               	stall,
 	output          	exception,  
 	output [31:0] pc_out,
+
+	// Add these two lines to the port list:
+    //output [31:0] next_pc_pipe,
+    //output [31:0] inst_fetch_pc_pipe,
 
 	// interface of instruction Memory
 	input               	inst_mem_is_valid,
@@ -27,6 +33,7 @@ module pipe
 	output        mmio_write_enable,
     output        mmio_read_enable,
     output [31:0] mmio_write_address,
+	output [31:0] mmio_read_address,
     output [31:0] mmio_write_data,
     input  [31:0] mmio_read_data
 );
@@ -115,37 +122,45 @@ module pipe
 	wire       	[31: 0] inst_mem_address;
 
 	wire                is_mext;
+	
 
-	wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
-    wire is_mmio_read  = (dmem_read_address  >= 32'h8000_0000);
-
-    // Drive the MMIO output ports!
-    assign mmio_write_enable  = wb_mem_write && is_mmio_write;
-    assign mmio_read_enable   = mem_to_reg   && is_mmio_read;  // Satish's Read Enable (using load flag)
-    assign mmio_write_data    = wb_write_data;
-    assign mmio_write_address = dmem_write_address;
+wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
     
-    // (Notice we deleted 'wire [31:0] mmio_read_data' because it is an input port now!)
-//------------------------------------------------------//
-assign dmem_write_address       	= wb_write_address; 	// assigning where to write
-assign dmem_read_address        	= alu_operand1 + execute_immediate;  // Assigning address to read from the data memory
-assign dmem_read_offset = dmem_read_address[1:0];
-assign dmem_read_ready          	= mem_to_reg;   // load instruction flag to read from memory
-assign dmem_write_ready         	= wb_mem_write && !is_mmio_write; 	// flag to write into the memory
-assign dmem_write_data          	= wb_write_data;	// assigning data to write
-assign dmem_write_byte          	= wb_write_byte;	// flag for writing the data bytes
-assign dmem_read_data = is_mmio_read ? mmio_read_data : dmem_read_data_temp;
-assign dmem_read_valid_checker  	= !is_mmio_read;
+    // EX STAGE: The read address comes from Execute stage
+    wire is_mmio_read_ex = (dmem_read_address >= 32'h8000_0000);
 
-assign dmem_re_o    = dmem_read_ready;
-assign dmem_raddr_o = dmem_read_address;
-assign dmem_we_o    = dmem_write_ready;
-assign dmem_waddr_o = dmem_write_address;
-assign dmem_wdata_o = dmem_write_data;
-assign dmem_wstrb_o = dmem_write_byte;
+    // BUG 1 FIX: Register the read check to align with WB stage (1 cycle latency)
+    reg is_mmio_read_wb;
+    always @(posedge clk or negedge reset) begin
+        if (!reset) begin
+            is_mmio_read_wb <= 1'b0;
+        end
+        else if (!stall_read && !wb_stall) begin 
+            is_mmio_read_wb <= is_mmio_read_ex;
+        end
+    end
 
+    // BUG 2 FIX: Drive the physical ports using the split addresses
+    assign mmio_write_enable  = wb_mem_write && is_mmio_write;
+    assign mmio_read_enable   = mem_to_reg   && is_mmio_read_ex;  
+    assign mmio_write_address = dmem_write_address; // From WB stage
+    assign mmio_read_address  = dmem_read_address;  // From EX stage
+
+    // ... your normal dmem assignments stay the same ...
+    assign dmem_write_address = wb_write_address;     
+    assign dmem_read_address  = alu_operand1 + execute_immediate;  
+    assign dmem_read_offset   = dmem_read_address[1:0];
+    assign dmem_read_ready    = mem_to_reg;   
+    assign dmem_write_ready   = wb_mem_write && !is_mmio_write;   
+    assign dmem_write_data    = wb_write_data;    
+    assign dmem_write_byte    = wb_write_byte;    
+
+    // THE MUX FIX: Use the WB-delayed signal to select the data!
+    assign dmem_read_data = is_mmio_read_wb ? mmio_read_data : dmem_read_data_temp;
+    assign dmem_read_valid_checker = !is_mmio_read_wb;
 
 // -----------------------------------------------------//
+
 
 // instantiating Instruction fetch module -----------------------
 IF_ID IF_ID_stage (
@@ -351,5 +366,9 @@ wb wb_stage (
 );
 
 assign pc_out = fetch_pc;
+
+// At the bottom of pipeline.v, connect them to the internal wires:
+//assign next_pc_pipe = next_pc;
+//assign inst_fetch_pc_pipe = inst_fetch_pc;
 
 endmodule
