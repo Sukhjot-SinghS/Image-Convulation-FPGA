@@ -26,6 +26,7 @@ module top_fpga #(
     end
     wire clk_25mhz = clk_div[1];
 
+    wire [31:0] mmio_raddr;
     // PIPE ↔ MEMORY WIRES
     wire [31:0] inst_mem_read_data;
     wire        inst_mem_is_valid = 1'b1;
@@ -67,7 +68,8 @@ module top_fpga #(
         .mmio_read_enable   (mmio_re),
         .mmio_write_address (mmio_addr),
         .mmio_write_data    (mmio_wdata),
-        .mmio_read_data     (mmio_rdata)
+        .mmio_read_data     (mmio_rdata),
+        .mmio_read_address   (mmio_raddr)
     );
     
     // 2. INSTRUCTION MEMORY
@@ -99,7 +101,8 @@ module top_fpga #(
         .mem_read   (mmio_re),
         .cpu_addr   (mmio_addr),
         .cpu_wdata  (mmio_wdata),
-        .cpu_rdata  (mmio_rdata)
+        .cpu_rdata  (mmio_rdata),
+        .cpu_raddr  (mmio_raddr)
     );
 
 endmodule
