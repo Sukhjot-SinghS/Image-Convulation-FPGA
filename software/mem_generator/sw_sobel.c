@@ -1,183 +1,93 @@
-// /**
-//  * sw_blur.c
-//  * Author: Abhirup Paul
-//  * Purpose: Software-only Box Blur (Smoothing) baseline.
-//  */
+// ==============================================================================
+// sw_sobel.c
+// Bare-metal Sobel Edge Detection for custom RISC-V CPU.
+// Reads 128x128 from BRAM_IN, computes 3x3 Sobel, writes 126x126 to BRAM_OUT.
+// ==============================================================================
 
-// #include <stdint.h>
-
-// #define WIDTH  128
-// #define HEIGHT 128
-
-// void box_blur(volatile uint8_t input[HEIGHT][WIDTH], volatile uint8_t output[HEIGHT-2][WIDTH-2]) {
-//     for (int r = 1; r < HEIGHT - 1; r++) {
-//         for (int c = 1; c < WIDTH - 1; c++) {
-//             volatile uint32_t sum = 0;
-
-//             // 3x3 Neighborhood Sum
-//             for (int i = -1; i <= 1; i++) {
-//                 for (int j = -1; j <= 1; j++) {
-//                     sum += input[r + i][c + j];
-//                 }
-//             }
-
-//             // Average (Divide by 9)
-//             // Note: On your RISC-V core, this uses Shaurya's DIV hardware!
-//             output[r - 1][c - 1] = (uint8_t)(sum / 9);
-//         }
-//     }
-// }
-
-// int main() {
-//     volatile uint8_t image_in[HEIGHT][WIDTH];
-//     volatile uint8_t image_out[HEIGHT-2][WIDTH-2];
-
-//     box_blur(image_in, image_out);
-//     return 0;
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-// #include <stdint.h>
-
-// #define IMG_W 32
-// #define IMG_H 32
-
-// // Allocate arrays in Data Memory
-// uint8_t image_in[IMG_H][IMG_W];
-// uint8_t image_out[IMG_H][IMG_W];
-
-// // A dummy pointer in Data Memory to act as our "Stopwatch Trigger"
-// // Address 0x00000F00 is near the end of your 4KB memory, making it easy to spot!
-// #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
-
-// int main() {
-//     // 1. Initialize dummy image data
-//     for (int y = 0; y < IMG_H; y++) {
-//         for (int x = 0; x < IMG_W; x++) {
-//             image_in[y][x] = (uint8_t)((x + y) * 4);
-//         }
-//     }
-
-//     // ==========================================
-//     // 2. START TIMER FLAG
-//     // ==========================================
-//     BENCHMARK_FLAG = 0x11111111; 
-
-//     // 3. Perform 3x3 Box Blur (Pure Software)
-//     for (int y = 1; y < IMG_H - 1; y++) {
-//         for (int x = 1; x < IMG_W - 1; x++) {
-            
-//             uint32_t sum = 0;
-            
-//             // Accumulate the 3x3 window
-//             sum += image_in[y-1][x-1]; sum += image_in[y-1][x]; sum += image_in[y-1][x+1];
-//             sum += image_in[y][x-1];   sum += image_in[y][x];   sum += image_in[y][x+1];
-//             sum += image_in[y+1][x-1]; sum += image_in[y+1][x]; sum += image_in[y+1][x+1];
-
-//             // Divide by 9 for average
-//             image_out[y][x] = (uint8_t)(sum / 9);
-//         }
-//     }
-
-//     // ==========================================
-//     // 4. STOP TIMER FLAG
-//     // ==========================================
-//     BENCHMARK_FLAG = 0x99999999; 
-
-//     // Safely halt the processor
-//     while(1) {}
-//     return 0;
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#include <stdint.h>
-
-#define IMG_W 32
-#define IMG_H 32
-
-uint8_t image_in[IMG_H][IMG_W];
-uint8_t image_out[IMG_H][IMG_W];
-
-// Vivado Waveform Stopwatch Trigger
-#define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
-
-// UART Transmission Trigger (Sukhjot's MMIO Bridge)
-#define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
+// Memory Mapped Pointers directly to the Hardware BRAMs
+volatile unsigned char *bram_in  = (volatile unsigned char *)0xC0000000;
+volatile unsigned char *bram_out = (volatile unsigned char *)0xC0010000;
+volatile int *sw_done_reg        = (volatile int *)0x80000034;
 
 int main() {
-    // 1. Initialize dummy image data
-    for (int y = 0; y < IMG_H; y++) {
-        for (int x = 0; x < IMG_W; x++) {
-            image_in[y][x] = (uint8_t)((x + y) * 4);
+    int y, x;
+    int p00, p01, p02;
+    int p10, p11, p12;
+    int p20, p21, p22;
+    int sumX, sumY, magnitude;
+    int out_idx;
+
+    // Loop through the image, skipping the 1-pixel outer border
+    // Input is 128x128, Output becomes 126x126
+    for (y = 1; y < 127; y++) {
+        for (x = 1; x < 127; x++) {
+            
+            // ------------------------------------------------
+            // 1. Fetch 3x3 Window directly from BRAM_IN
+            // ------------------------------------------------
+            p00 = bram_in[(y - 1) * 128 + (x - 1)];
+            p01 = bram_in[(y - 1) * 128 + (x)];
+            p02 = bram_in[(y - 1) * 128 + (x + 1)];
+
+            p10 = bram_in[(y) * 128 + (x - 1)];
+            p11 = bram_in[(y) * 128 + (x)];
+            p12 = bram_in[(y) * 128 + (x + 1)];
+
+            p20 = bram_in[(y + 1) * 128 + (x - 1)];
+            p21 = bram_in[(y + 1) * 128 + (x)];
+            p22 = bram_in[(y + 1) * 128 + (x + 1)];
+
+            // ------------------------------------------------
+            // 2. Compute Sobel Gx (Horizontal edges)
+            // ------------------------------------------------
+            // Kernel: 
+            // -1  0  1
+            // -2  0  2
+            // -1  0  1
+            sumX = (p00 * -1) + (p02 * 1) +
+                   (p10 * -2) + (p12 * 2) +
+                   (p20 * -1) + (p22 * 1);
+
+            // ------------------------------------------------
+            // 3. Compute Sobel Gy (Vertical edges)
+            // ------------------------------------------------
+            // Kernel:
+            // -1 -2 -1
+            //  0  0  0
+            //  1  2  1
+            sumY = (p00 * -1) + (p01 * -2) + (p02 * -1) +
+                   (p20 * 1) + (p21 * 2) + (p22 * 1);
+
+            // ------------------------------------------------
+            // 4. Absolute Magnitude & Clamping
+            // ------------------------------------------------
+            // Bare-metal absolute value (no math.h needed)
+            if (sumX < 0) sumX = -sumX;
+            if (sumY < 0) sumY = -sumY;
+
+            magnitude = sumX + sumY;
+
+            // Clamp to maximum 8-bit pixel value
+            if (magnitude > 255) {
+                magnitude = 255;
+            }
+
+            // ------------------------------------------------
+            // 5. TIGHT PACKING: Write to BRAM_OUT
+            // ------------------------------------------------
+            // We map the (1..126) coordinate down to a (0..125) flat array
+            out_idx = (y - 1) * 126 + (x - 1);
+            bram_out[out_idx] = (unsigned char)magnitude;
         }
     }
 
-    // ==========================================
-    // 2. START TIMER FLAG
-    // ==========================================
-    BENCHMARK_FLAG = 0x11111111; 
+    // ------------------------------------------------
+    // 6. Ring the Doorbell
+    // ------------------------------------------------
+    // Tells top_fsm to switch to TRANSMIT state
+    *sw_done_reg = 1;
 
-    // 3. Perform 3x3 Gaussian Blur (Kernel sum = 16)
-    for (int y = 1; y < IMG_H - 1; y++) {
-        for (int x = 1; x < IMG_W - 1; x++) {
-            
-            uint32_t sum = 0;
-            
-            // Gaussian Kernel Weights:
-            // 1  2  1
-            // 2  4  2
-            // 1  2  1
-            sum += (1 * image_in[y-1][x-1]) + (2 * image_in[y-1][x]) + (1 * image_in[y-1][x+1]);
-            sum += (2 * image_in[y][x-1])   + (4 * image_in[y][x])   + (2 * image_in[y][x+1]);
-            sum += (1 * image_in[y+1][x-1]) + (2 * image_in[y+1][x]) + (1 * image_in[y+1][x+1]);
-
-            // Divide by 16 using a fast 4-bit right shift!
-            image_out[y][x] = (uint8_t)(sum >> 4);
-        }
-    }
-
-    // ==========================================
-    // 4. STOP TIMER FLAG
-    // ==========================================
-    BENCHMARK_FLAG = 0x99999999; 
-
-    // ==========================================
-    // 5. START UART TRANSMISSION
-    // ==========================================
-    SW_DONE_REG = 1;
-
-    while(1) {}
+    // Halt the CPU
+    while(1);
     return 0;
 }
