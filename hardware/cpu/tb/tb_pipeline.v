@@ -11,7 +11,7 @@ reg reset;
 // 100 MHz clock
 initial begin
 	clk = 0; 
-	$dumpfile("pipeline.vcd");
+	$dumpfile("../../pipeline.vcd");
 	$dumpvars(0, tb_pipeline);
 	forever #5 clk = ~clk;
 end
@@ -41,6 +41,9 @@ assign dmem_read_valid   = 1'b1;
 wire exception;
 wire [31:0]pc_out;//added
 
+wire        dmem_re, dmem_we;
+wire [31:0] dmem_raddr, dmem_waddr, dmem_wdata;
+wire [3:0]  dmem_wstrb;
 
 ////////////////////////////////////////////////////////////
 // DUT : PIPELINE CPU
@@ -58,10 +61,14 @@ pipe DUT (
 	.dmem_write_valid(dmem_write_valid),
 	.dmem_read_valid(dmem_read_valid),
 
-// TODO: Might have a few more port signals
-	.pc_out(pc_out)
+	.pc_out(pc_out),
+	.dmem_re_o    (dmem_re),
+    .dmem_raddr_o (dmem_raddr),
+    .dmem_we_o    (dmem_we),
+    .dmem_waddr_o (dmem_waddr),
+    .dmem_wdata_o (dmem_wdata),
+    .dmem_wstrb_o (dmem_wstrb)
 );
-
 
 ////////////////////////////////////////////////////////////
 // INSTRUCTION MEMORY  (matches instr_mem.v)
@@ -78,15 +85,13 @@ instr_mem IMEM (
 ////////////////////////////////////////////////////////////
 data_mem DMEM (
 	.clk(clk),
-
-	.re(DUT.dmem_read_ready),
-	.raddr (DUT.dmem_read_address),   
     .rdata (dmem_read_data),
-
-	.we    (DUT.dmem_write_ready),    
-    .waddr (DUT.dmem_write_address),  
-    .wdata (DUT.dmem_write_data),     
-    .wstrb (DUT.dmem_write_byte)
+    .re    (dmem_re),
+    .raddr (dmem_raddr),
+    .we    (dmem_we),
+    .waddr (dmem_waddr),
+    .wdata (dmem_wdata),
+    .wstrb (dmem_wstrb)
 );
 
 
@@ -94,10 +99,10 @@ data_mem DMEM (
 // SIMULATION TIME
 ////////////////////////////////////////////////////////////
 always @(posedge clk ) begin 
-	$display("time: %0d, next_pc = %h,pc = %h result = %0d", $time,DUT.next_pc ,DUT.pc ,$signed(DUT.execute.ex_result));
+	$display("time: %0d, next_pc = %h,pc = %h result = %0d,busy  = %b", $time,DUT.next_pc ,DUT.pc ,$signed(DUT.execute.ex_result),DUT.execute.alu_busy_o);
 end
 initial begin
-	#20000;   // run long enough to see program execute
+	#5000;   
 	$finish;
 end
 
