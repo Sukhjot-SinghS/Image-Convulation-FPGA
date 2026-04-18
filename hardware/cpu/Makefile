@@ -27,6 +27,8 @@ help:
 
 # Generic Rule for all programs
 # sort addition negative fib xor:
+# Generic Rule for all programs
+# sort addition negative fib xor:
 fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_sobel:
 	# 1. Generate Hex Files
 	$(MAKE) clean -C $(MEM_GEN)
