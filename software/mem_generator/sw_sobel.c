@@ -56,11 +56,19 @@
      BRAM_OUT_BASE[(row - 1) * OUT_W + (col - 1)] = val;
  }
  
+ volatile int dummy_counter;
  int main(void)
  {
+
+    // 2. The Un-killable Delay Loop!
+    // 'volatile' forces the compiler to keep it.
+    // 100,000,000 iterations = ~15 seconds of pure waiting at 25MHz.
+    for (int i = 0; i < 50000000; i++) {
+        dummy_counter = i;
+    }
+    
      /* ── START TIMER ────────────────────────────────────────── */
-     for(volatile int delay = 0; delay < 50000000; delay++);
-     BENCHMARK_FLAG = 0x11111111;
+    BENCHMARK_FLAG = 0x11111111;
  
      /*
       * 3×3 Gaussian blur kernel:

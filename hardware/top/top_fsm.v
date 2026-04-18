@@ -138,10 +138,15 @@ always @(posedge clk or negedge reset) begin
 end
 
 // ─────────────────────────────────────────────────────────────
-//  Output transmit counter
+//  Output transmit counter and robust FSM
 // ─────────────────────────────────────────────────────────────
 reg  [13:0] tx_byte_count;
-reg  [1:0]  tx_fetch_state;
+reg  [2:0]  tx_fsm;
+
+localparam TX_FETCH_ADDR = 3'd0;
+localparam TX_FETCH_WAIT = 3'd1;
+localparam TX_PULSE_START= 3'd2;
+localparam TX_WAIT_DONE  = 3'd3;
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
@@ -149,36 +154,41 @@ always @(posedge clk or negedge reset) begin
         bram_out_rd_addr <= 14'd0;
         tx_start         <= 1'b0;
         tx_byte          <= 8'd0;
-        tx_fetch_state   <= 2'd0;
+        tx_fsm           <= TX_FETCH_ADDR;
     end
     else begin
         tx_start <= 1'b0;   
 
         if (fsm_state == TRANSMIT) begin
-            if (tx_fetch_state == 2'd0 && !tx_done) begin
-                bram_out_rd_addr <= tx_byte_count;
-                tx_fetch_state   <= 2'd1;
-            end
-            else if (tx_fetch_state == 2'd1) begin
-                tx_fetch_state   <= 2'd2;
-            end
-            else if (tx_fetch_state == 2'd2) begin
-                tx_byte        <= bram_out_rd_data;
-                tx_start       <= 1'b1;
-                tx_fetch_state <= 2'd0;
-            end
-
-            if (tx_done) begin
-                if (tx_byte_count == 14'd15875)
-                    tx_byte_count <= 14'd0;
-                else
-                    tx_byte_count <= tx_byte_count + 14'd1;
-            end
+            case (tx_fsm)
+                TX_FETCH_ADDR: begin
+                    bram_out_rd_addr <= tx_byte_count;
+                    tx_fsm           <= TX_FETCH_WAIT;
+                end
+                TX_FETCH_WAIT: begin
+                    tx_fsm           <= TX_PULSE_START;
+                end
+                TX_PULSE_START: begin
+                    tx_byte          <= bram_out_rd_data;
+                    tx_start         <= 1'b1;
+                    tx_fsm           <= TX_WAIT_DONE;
+                end
+                TX_WAIT_DONE: begin
+                    if (tx_done) begin
+                        if (tx_byte_count == 14'd15875)
+                            tx_byte_count <= 14'd0;
+                        else
+                            tx_byte_count <= tx_byte_count + 14'd1;
+                            
+                        tx_fsm <= TX_FETCH_ADDR;
+                    end
+                end
+            endcase
         end
         else begin
             tx_byte_count    <= 14'd0;
             bram_out_rd_addr <= 14'd0;
-            tx_fetch_state   <= 2'd0;
+            tx_fsm           <= TX_FETCH_ADDR;
         end
     end
 end

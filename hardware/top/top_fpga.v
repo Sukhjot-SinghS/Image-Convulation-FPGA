@@ -1,14 +1,14 @@
 `timescale 1ns / 1ps
 // ============================================================
-// top_fpga.v
+// top_fpga.v (EXPLICIT 1 Hz TOGGLE CLOCK)
 // ============================================================
-
+ 
 module top_fpga #(
     parameter IMEMSIZE = 4096,
     parameter DMEMSIZE = 4096
 )(
     input  wire clk,         // fast board clock (100 MHz)
-    input  wire reset,       // N17 physical button (Active-High)
+    input  wire reset,       // N17 physical button
     output [15:0] led,       // PC visualizer
     input  wire uart_rx_pin, // UART RX from PC
     output wire uart_tx_pin  // UART TX to PC
@@ -20,11 +20,37 @@ module top_fpga #(
     // MASTER RESET INVERTER
     wire sys_resetn = ~reset; 
     
-    reg [1:0] clk_div = 2'b00;
+    // ========================================================
+    // 25 MHz CLOCK DIVIDER 
+    // 100 MHz input / 4 = 25 MHz. Toggle every 2 ticks.
+    // ========================================================
+    /* 
+    // OLD 1 Hz DIVIDER (Commented out)
+    reg [25:0] counter = 26'd0;
+    reg clk_slow = 1'b0;
+
     always @(posedge clk) begin
-        clk_div <= clk_div + 1;
+        if (counter == 26'd49_999_999) begin
+            counter  <= 26'd0;
+            clk_slow <= ~clk_slow; // Toggle the clock
+        end else begin
+            counter  <= counter + 1;
+        end
     end
-    wire clk_25mhz = clk_div[1];
+    */
+
+    reg [1:0] counter = 2'd0;
+    reg clk_slow = 1'b0;
+
+    always @(posedge clk) begin
+        if (counter == 2'd1) begin
+            counter  <= 2'd0;
+            clk_slow <= ~clk_slow; // Toggle the clock
+        end else begin
+            counter  <= counter + 1;
+        end
+    end
+    // ========================================================
 
     wire [31:0] mmio_raddr;
     // PIPE ↔ MEMORY WIRES
@@ -46,9 +72,9 @@ module top_fpga #(
     wire [31:0] mmio_wdata;
     wire [31:0] mmio_rdata;
 
-    // 1. PIPELINE CPU
+    // 1. PIPELINE CPU (Running on clk_slow)
     pipe DUT (
-        .clk                (clk_25mhz),             
+        .clk                (clk_slow),             
         .reset              (sys_resetn),
         .stall              (1'b0),
         .exception          (exception),
@@ -69,19 +95,19 @@ module top_fpga #(
         .mmio_write_address (mmio_addr),
         .mmio_write_data    (mmio_wdata),
         .mmio_read_data     (mmio_rdata),
-        .mmio_read_address   (mmio_raddr)
+        .mmio_read_address  (mmio_raddr)
     );
     
-    // 2. INSTRUCTION MEMORY
+    // 2. INSTRUCTION MEMORY (Running on clk_slow)
     instr_mem IMEM (
-        .clk    (clk_25mhz),                    
+        .clk    (clk),                    
         .pc     (pc_out),
         .instr  (inst_mem_read_data)
     );
 
-    // 3. DATA MEMORY 
+    // 3. DATA MEMORY (Running on clk_slow)
     data_mem DMEM (
-        .clk    (clk_25mhz),            
+        .clk    (clk_slow),            
         .re     (dmem_re),
         .raddr  (dmem_raddr),
         .rdata  (dmem_read_data),
@@ -91,9 +117,9 @@ module top_fpga #(
         .wstrb  (dmem_wstrb)
     );
 
-    // 4. COPROCESSOR ISLAND & FSM
+    // 4. COPROCESSOR ISLAND & FSM (Running on clk_slow)
     top_fsm u_coprocessor_island (
-        .clk        (clk_25mhz),
+        .clk        (clk_slow),
         .reset      (sys_resetn),
         .rx_pin     (uart_rx_pin), 
         .tx_pin     (uart_tx_pin), 
