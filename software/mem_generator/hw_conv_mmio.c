@@ -16,8 +16,16 @@ volatile int8_t gaussian_blur[9] = { 1,  2,  1,
                                      2,  4,  2, 
                                      1,  2,  1};
 
+volatile int dummy_counter;
+
 int main() {
-    // 1. Initialize Hardware Parameters
+    // 1. The Un-killable Delay Loop (Wait for Python GUI UART TX)
+    // 50M iterations = ~2-3 seconds grace period at 25MHz for the GUI to send the image!
+    for (int i = 0; i < 50000000; i++) {
+        dummy_counter = i;
+    }
+
+    // 2. Initialize Hardware Parameters
     HW_NORM_EN = 1; // Enable division by 16
     
     for (int i = 0; i < 9; i++) {
@@ -25,26 +33,26 @@ int main() {
     }
 
     // ==========================================
-    // 2. START TIMER FLAG
+    // 3. START TIMER FLAG
     // ==========================================
     BENCHMARK_FLAG = 0x11111111; 
 
-    // 3. Trigger Hardware Accelerator
+    // 4. Trigger Hardware Accelerator
     HW_CMD_START = 1;
     HW_CMD_START = 0; 
 
-    // 4. Poll Status
+    // 5. Poll Status
     while (HW_STATUS_DONE == 0) {
         // CPU yields while Soumik's accelerator crunches the pixels
     }
 
     // ==========================================
-    // 5. STOP TIMER FLAG
+    // 6. STOP TIMER FLAG
     // ==========================================
     BENCHMARK_FLAG = 0x99999999; 
 
     // ==========================================
-    // 6. START UART TRANSMISSION
+    // 7. START UART TRANSMISSION
     // ==========================================
     SW_DONE_REG = 1;
 
