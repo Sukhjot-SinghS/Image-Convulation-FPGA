@@ -11,32 +11,16 @@ ENTRY( _start )
  */
 MEMORY
 {
-<<<<<<< HEAD
-    RAM (xrw) : ORIGIN = 0x00000000, LENGTH = 0x1000 /* 4 KB */
-=======
     /* Instruction Memory (mapped via Satish's MMIO logic) */
     RAM (xrw) : ORIGIN = 0x00000000, LENGTH = 4K
->>>>>>> origin/sukhjot
 }
 
 SECTIONS
 {
-<<<<<<< HEAD
     /* 1. INSTRUCTION MEMORY (.text) */
-    .text :
-    {
-        /* The boot code from start.s MUST be the very first thing at 0x00000000 */
-        *(.text.init)
-        
-        /* Followed by the rest of the C code and read-only data */
-        *(.text*)
-        *(.rodata*)
-        . = ALIGN(4);
-=======
     .text : {
         *(.text.startup)  /* <--- THIS IS THE MAGIC LINE. Forces Bootloader to 0x00 */
         *(.text)          /* Then puts main() and other functions after it */
->>>>>>> origin/sukhjot
     } > RAM
 
     /* 2. DATA MEMORY (.data) - Initialized variables */

@@ -7,19 +7,11 @@ module top_fpga #(
     parameter IMEMSIZE = 4096,
     parameter DMEMSIZE = 4096
 )(
-<<<<<<< HEAD
-    input  wire clk,        // fast board clock (e.g. 100 MHz)
-    input  wire reset,      // active-low reset
-    output [15:0] led,       // PC visualizer
-	input  wire uart_rx_pin, // UART RX from PC
-    output wire uart_tx_pin
-=======
     input  wire clk,         // fast board clock (100 MHz)
     input  wire reset,       // N17 physical button
     output [15:0] led,       // PC visualizer
     input  wire uart_rx_pin, // UART RX from PC
     output wire uart_tx_pin  // UART TX to PC
->>>>>>> origin/sukhjot
 );
 
     wire [31:0] pc_out;

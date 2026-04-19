@@ -1,3 +1,24 @@
+// --- CPU RTL Files ---
 rtl/memory.v
 rtl/pipeline.v
-tb/tb_pipeline.v
+rtl/IF_ID.v
+rtl/execute.v
+rtl/hazard_unit.v
+rtl/rv32m_alu.v
+rtl/wb.v
+
+// --- Coprocessor RTL Files ---
+../top/top_fpga.v
+../top/top_fsm.v
+../coprocessor/rtl/conv_engine.v
+../coprocessor/rtl/conv_datapath.v
+../coprocessor/rtl/line_buffer.v
+../coprocessor/rtl/mmio_decoder.v
+../coprocessor/rtl/kernel_regfile.v
+../coprocessor/rtl/img_bram_in.v
+../coprocessor/rtl/img_bram_out.v
+../coprocessor/rtl/uart_rx.v
+../coprocessor/rtl/uart_tx.v
+
+// --- Master Testbench ---
+../cpu/tb/tb_top_fpga.v

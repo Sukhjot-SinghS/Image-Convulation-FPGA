@@ -53,10 +53,8 @@ conv_engine dut (
     .k0(k0), .k1(k1), .k2(k2),
     .k3(k3), .k4(k4), .k5(k5),
     .k6(k6), .k7(k7), .k8(k8),
-<<<<<<< HEAD
-=======
-     .norm_en      (1'b0),  
->>>>>>> origin/sukhjot
+
+    .norm_en      (1'b0),  
     .window_valid (window_valid),
     .pixel_idx_in (pixel_idx_in),
     .pixel_out    (pixel_out),

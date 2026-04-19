@@ -47,32 +47,7 @@ localparam DRAIN       = 3'd5;  // 4-cycle pipeline drain
 reg [2:0] fsm_state;
 reg [2:0] drain_count;
 
-// ─────────────────────────────────────────────────────────────
-//  THE BRAM HIJACK LOGIC
-// ─────────────────────────────────────────────────────────────
-// BUG 2 FIX: Use cpu_raddr for reading, and cpu_addr for writing!
-wire cpu_reads_bram_in   = (cpu_raddr[31:16] == 16'hC000) && mem_read; 
-wire cpu_writes_bram_out = (cpu_addr[31:16] == 16'hC001) && mem_write;
 
-// Mux the Read port of BRAM_IN (Hardware vs CPU)
-wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_raddr[13:0] : bram_in_rd_addr;
-
-// Mux the Write port of BRAM_OUT (Hardware vs CPU)
-wire [13:0] actual_bram_out_wr_addr = cpu_writes_bram_out ? cpu_addr[13:0] : pixel_idx_out;
-wire [7:0]  actual_bram_out_wr_data = cpu_writes_bram_out ? cpu_wdata[7:0] : pixel_out;
-wire        actual_bram_out_we      = cpu_writes_bram_out ? 1'b1           : ce_out_valid;
-
-// Your excellent 1-cycle delay fix to match BRAM latency!
-reg cpu_reads_bram_d1;
-always @(posedge clk or negedge reset) begin
-    if (!reset)
-        cpu_reads_bram_d1 <= 1'b0;
-    else
-        cpu_reads_bram_d1 <= cpu_reads_bram_in;
-end
-
-// Multiplex BRAM read and MMIO read safely
-assign cpu_rdata = cpu_reads_bram_d1 ? {24'd0, bram_in_rd_data} : mmio_rdata;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires 
@@ -106,7 +81,70 @@ reg         tx_start;
 reg  [7:0]  tx_byte;
 wire        tx_done;
 wire        sw_done;        // Need this wire to catch the doorbell!
-wire [31:0] mmio_rdata;     
+wire [31:0] mmio_rdata;
+
+
+
+// ─────────────────────────────────────────────────────────────
+//  THE BRAM HIJACK LOGIC
+// ─────────────────────────────────────────────────────────────
+// BUG 2 FIX: Use cpu_raddr for reading, and cpu_addr for writing!
+wire cpu_reads_bram_in   = (cpu_raddr[31:16] == 16'hC000) && mem_read; 
+wire cpu_writes_bram_out = (cpu_addr[31:16] == 16'hC001) && mem_write;
+
+// Mux the Read port of BRAM_IN (Hardware vs CPU)
+wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_raddr[13:0] : bram_in_rd_addr;
+
+// Mux the Write port of BRAM_OUT (Hardware vs CPU)
+wire [13:0] actual_bram_out_wr_addr = cpu_writes_bram_out ? cpu_addr[13:0] : pixel_idx_out;
+wire [7:0]  actual_bram_out_wr_data = cpu_writes_bram_out ? cpu_wdata[7:0] : pixel_out;
+wire        actual_bram_out_we      = cpu_writes_bram_out ? 1'b1           : ce_out_valid;
+
+// Your excellent 1-cycle delay fix to match BRAM latency!
+reg cpu_reads_bram_d1;
+always @(posedge clk or negedge reset) begin
+    if (!reset)
+        cpu_reads_bram_d1 <= 1'b0;
+    else
+        cpu_reads_bram_d1 <= cpu_reads_bram_in;
+end
+
+// Multiplex BRAM read and MMIO read safely
+assign cpu_rdata = cpu_reads_bram_d1 ? {24'd0, bram_in_rd_data} : mmio_rdata;
+
+// // ─────────────────────────────────────────────────────────────
+// //  Internal wires 
+// // ─────────────────────────────────────────────────────────────
+// wire        rx_dv;          
+// wire [7:0]  rx_byte;        
+// reg         bram_in_we;
+// reg  [13:0] bram_in_wr_addr;
+// wire [13:0] bram_in_rd_addr;   
+// wire [7:0]  bram_in_rd_data;   
+// wire        lb_start;           
+// wire        lb_done;            
+// wire [7:0]  p00, p01, p02;
+// wire [7:0]  p10, p11, p12;
+// wire [7:0]  p20, p21, p22;
+// wire        window_valid;
+// wire [13:0] out_pixel_idx;
+// wire [7:0]  pixel_out;
+// wire        ce_out_valid;
+// wire [13:0] pixel_idx_out;
+// wire signed [7:0] k0, k1, k2;
+// wire signed [7:0] k3, k4, k5;
+// wire signed [7:0] k6, k7, k8;
+// wire        norm_en;
+// wire        kernel_we;
+// wire [3:0]  kernel_addr;
+// wire [31:0] kernel_wdata;
+// reg  [13:0] bram_out_rd_addr;
+// wire [7:0]  bram_out_rd_data;
+// reg         tx_start;
+// reg  [7:0]  tx_byte;
+// wire        tx_done;
+// wire        sw_done;        // Need this wire to catch the doorbell!
+// wire [31:0] mmio_rdata;     
 
 // ─────────────────────────────────────────────────────────────
 //  Image load counter

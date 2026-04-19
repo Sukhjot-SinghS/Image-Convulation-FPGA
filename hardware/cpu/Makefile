@@ -9,7 +9,12 @@
 # --- Variables ---
 INC_DIR  = ../rtl
 BFLAGS   = -i $(INC_DIR) -f filelist.txt
-TOP_MOD  = tb_pipeline
+# TOP_MOD  = tb_pipeline
+
+# <-- changed
+TOP_MOD = tb_top_fpga
+# changed -->
+
 SNAPSHOT = riscv_sim
 MEM_GEN  = ../../software/mem_generator
 
@@ -20,7 +25,7 @@ XELAB = xelab
 XSIM  = xsim
 
 # .PHONY: help clean sort addition negative fib xor
-.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur
+.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur sw_sobel sw_master
 
 help:
 	@echo "Usage: make <program_name> (e.g. make addition)"
@@ -40,7 +45,7 @@ fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur sw
 	$(XSIM) $(SNAPSHOT) -tclbatch xsim_cfg.tcl -log stdout
 
 	# 4. Launch GTKWave automatically
-	gtkwave pipeline.vcd &
+# 	gtkwave pipeline.vcd &
 
 clean:
 	@rm -rf xsim.dir/ .Xil/

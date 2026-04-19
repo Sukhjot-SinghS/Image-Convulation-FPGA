@@ -28,9 +28,9 @@ module tb_top_fpga();
         uart_rx_pin = 1; // UART idles high
         
         // Apply Active-Low Reset
-        reset = 0; 
+        reset = 1; 
         #100;
-        reset = 1;       // Release reset to let CPU fetch PC 0
+        reset = 0;       // Release reset to let CPU fetch PC 0
         
         // Let it run long enough for the C code to execute completely
         // (100us should be plenty for the mul_div_test)

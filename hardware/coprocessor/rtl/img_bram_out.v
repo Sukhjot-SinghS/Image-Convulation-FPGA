@@ -59,8 +59,4 @@ always @(posedge clk) begin
     rd_data <= mem[rd_addr];
 end
 
-<<<<<<< HEAD
 endmodule
-=======
-endmodule
->>>>>>> origin/sukhjot
