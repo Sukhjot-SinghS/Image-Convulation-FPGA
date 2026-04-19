@@ -9,7 +9,7 @@ import time
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 COM_PORT      = 'COM4'
 BAUD_RATE     = 115200
-IMG_PATH      = 'img2.png'
+IMG_PATH      = 'grayscale.jpg'
 
 IMG_W, IMG_H  = 128, 128
 OUT_W, OUT_H  = 126, 126

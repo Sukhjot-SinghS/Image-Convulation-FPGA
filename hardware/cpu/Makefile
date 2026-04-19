@@ -20,7 +20,7 @@ XELAB = xelab
 XSIM  = xsim
 
 # .PHONY: help clean sort addition negative fib xor
-.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_sobel
+.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur
 
 help:
 	@echo "Usage: make <program_name> (e.g. make addition)"
@@ -29,16 +29,14 @@ help:
 # sort addition negative fib xor:
 # Generic Rule for all programs
 # sort addition negative fib xor:
-fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_sobel:
-	# 1. Generate Hex Files
+fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur:
+	@echo "1. Generate Hex Files"
 	$(MAKE) clean -C $(MEM_GEN)
 	$(MAKE) $@ -C $(MEM_GEN)
-	
-	# 2. Vivado Simulation Flow
+	@echo "2. Vivado Simulation Flow"
 	$(XVLOG) $(BFLAGS)
 	$(XELAB) -top $(TOP_MOD) -snapshot $(SNAPSHOT) -debug typical
-	
-	# 3. Run Simulation (log to stdout to see $display)
+	@echo "3. Run Simulation (log to stdout to see display)"
 	$(XSIM) $(SNAPSHOT) -tclbatch xsim_cfg.tcl -log stdout
 
 clean:
