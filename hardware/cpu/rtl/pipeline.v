@@ -145,6 +145,15 @@ wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
     assign mmio_read_enable   = mem_to_reg   && is_mmio_read_ex;  
     assign mmio_write_address = dmem_write_address; // From WB stage
     assign mmio_read_address  = dmem_read_address;  // From EX stage
+    assign mmio_write_data    = dmem_write_data;    // BUG FIX: Was UNDRIVEN! sw_done never fired!
+
+    // DRIVE TOP-LEVEL DMEM PORTS
+    assign dmem_re_o    = dmem_read_ready;
+    assign dmem_raddr_o = dmem_read_address;
+    assign dmem_we_o    = dmem_write_ready;
+    assign dmem_waddr_o = dmem_write_address;
+    assign dmem_wdata_o = dmem_write_data;
+    assign dmem_wstrb_o = dmem_write_byte;
 
     // ... your normal dmem assignments stay the same ...
     assign dmem_write_address = wb_write_address;     

@@ -10,8 +10,6 @@
 //               Fix: reset count and index in the IDLE state.
 //   [FIX-TX-2] Added synchronous reset (rst) for synthesis safety.
 
-`timescale 1ns/1ps
-
 module uart_tx #(parameter CLKS_PER_BIT = 87) (
     input            clk,
     input            rst,       // synchronous active-high reset

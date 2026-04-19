@@ -4,14 +4,21 @@ code.elf:     file format elf32-littleriscv
 
 Disassembly of section .text:
 
-00000000 <main>:
-   0:	ff010113          	addi	sp,sp,-16
-   4:	06400793          	li	a5,100
-   8:	00f12623          	sw	a5,12(sp)
-   c:	00200793          	li	a5,2
-  10:	00f12423          	sw	a5,8(sp)
-  14:	00c12503          	lw	a0,12(sp)
-  18:	00812783          	lw	a5,8(sp)
-  1c:	00f50533          	add	a0,a0,a5
-  20:	01010113          	addi	sp,sp,16
-  24:	00008067          	ret
+00000000 <_start>:
+   0:	00001137          	lui	sp,0x1
+   4:	008000ef          	jal	c <main>
+
+00000008 <end_loop>:
+   8:	0000006f          	j	8 <end_loop>
+
+0000000c <main>:
+   c:	ff010113          	addi	sp,sp,-16 # ff0 <main+0xfe4>
+  10:	06400793          	li	a5,100
+  14:	00f12623          	sw	a5,12(sp)
+  18:	00200793          	li	a5,2
+  1c:	00f12423          	sw	a5,8(sp)
+  20:	00c12503          	lw	a0,12(sp)
+  24:	00812783          	lw	a5,8(sp)
+  28:	00f50533          	add	a0,a0,a5
+  2c:	01010113          	addi	sp,sp,16
+  30:	00008067          	ret

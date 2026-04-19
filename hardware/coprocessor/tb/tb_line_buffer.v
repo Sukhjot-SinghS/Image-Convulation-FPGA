@@ -245,7 +245,6 @@ initial begin
         @(posedge clk);
         cycle_count = cycle_count + 1;
     end
-    @(posedge clk);   // wait one cycle for registered outputs to settle
 
     // now window_valid=1, col_ptr=0, check values
     // pixel value = address & 0xFF

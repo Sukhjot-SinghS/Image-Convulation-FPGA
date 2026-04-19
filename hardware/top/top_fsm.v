@@ -1,3 +1,4 @@
+`timescale 1ns / 1ps
 // ============================================================
 //  top_fsm.v
 // ============================================================
@@ -18,11 +19,14 @@ module top_fsm #(
 
     // ── CPU pipeline interface (from pipeline.v) ─────────────
     input  wire        mem_write,   // CPU write enable
-    input  wire        mem_read, 
-    input  wire [31:0] cpu_raddr,   // CPU read enable
-    input  wire [31:0] cpu_addr,    // CPU address bus
+    input  wire        mem_read,    // CPU read enable
+    input  wire [31:0] cpu_addr,    // CPU WRITE address bus (from WB)
+    input  wire [31:0] cpu_raddr,   // <--- BUG 2 FIX: NEW READ address bus (from EX)
     input  wire [31:0] cpu_wdata,   // CPU write data
-    output wire [31:0] cpu_rdata    // CPU read data
+    output wire [31:0] cpu_rdata,   // CPU read data
+
+    // ── Benchmark cycle counter (from top_fpga.v) ────────────
+    input  wire [31:0] cycle_count  // frozen cycle count for UART TX
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -44,12 +48,13 @@ reg [2:0] fsm_state;
 reg [2:0] drain_count;
 
 // ─────────────────────────────────────────────────────────────
-//  THE BRAM HIJACK LOGIC (Fixed for Multi-Driver & Timing Loops)
+//  THE BRAM HIJACK LOGIC
 // ─────────────────────────────────────────────────────────────
-// Use cpu_raddr for reading!
-wire cpu_reads_bram_in   = (cpu_raddr[31:16] == 16'hC000) && mem_read;
+// BUG 2 FIX: Use cpu_raddr for reading, and cpu_addr for writing!
+wire cpu_reads_bram_in   = (cpu_raddr[31:16] == 16'hC000) && mem_read; 
 wire cpu_writes_bram_out = (cpu_addr[31:16] == 16'hC001) && mem_write;
 
+// Mux the Read port of BRAM_IN (Hardware vs CPU)
 wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_raddr[13:0] : bram_in_rd_addr;
 
 // Mux the Write port of BRAM_OUT (Hardware vs CPU)
@@ -57,14 +62,22 @@ wire [13:0] actual_bram_out_wr_addr = cpu_writes_bram_out ? cpu_addr[13:0] : pix
 wire [7:0]  actual_bram_out_wr_data = cpu_writes_bram_out ? cpu_wdata[7:0] : pixel_out;
 wire        actual_bram_out_we      = cpu_writes_bram_out ? 1'b1           : ce_out_valid;
 
-// ONLY the BRAM drives cpu_rdata now. This kills the short circuit!
-assign cpu_rdata = cpu_reads_bram_in ? {24'd0, bram_in_rd_data} : 32'd0;
+// Your excellent 1-cycle delay fix to match BRAM latency!
+reg cpu_reads_bram_d1;
+always @(posedge clk or negedge reset) begin
+    if (!reset)
+        cpu_reads_bram_d1 <= 1'b0;
+    else
+        cpu_reads_bram_d1 <= cpu_reads_bram_in;
+end
+
+// Multiplex BRAM read and MMIO read safely
+assign cpu_rdata = cpu_reads_bram_d1 ? {24'd0, bram_in_rd_data} : mmio_rdata;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires 
 // ─────────────────────────────────────────────────────────────
 wire        rx_dv;          
-wire sw_done;
 wire [7:0]  rx_byte;        
 reg         bram_in_we;
 reg  [13:0] bram_in_wr_addr;
@@ -92,6 +105,8 @@ wire [7:0]  bram_out_rd_data;
 reg         tx_start;
 reg  [7:0]  tx_byte;
 wire        tx_done;
+wire        sw_done;        // Need this wire to catch the doorbell!
+wire [31:0] mmio_rdata;     
 
 // ─────────────────────────────────────────────────────────────
 //  Image load counter
@@ -126,10 +141,18 @@ always @(posedge clk or negedge reset) begin
 end
 
 // ─────────────────────────────────────────────────────────────
-//  Output transmit counter
+//  Output transmit counter and robust FSM
 // ─────────────────────────────────────────────────────────────
 reg  [13:0] tx_byte_count;
-reg  [1:0]  tx_fetch_state;
+reg  [2:0]  tx_fsm;
+
+localparam TX_FETCH_ADDR = 3'd0;
+localparam TX_FETCH_WAIT = 3'd1;
+localparam TX_PULSE_START= 3'd2;
+localparam TX_WAIT_DONE  = 3'd3;
+localparam TX_SEND_CYCLES= 3'd4;  // NEW: transmit 4 cycle-count bytes
+
+reg [1:0] cycle_byte_sel;  // selects which byte of cycle_count to send (0=MSB..3=LSB)
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
@@ -137,36 +160,66 @@ always @(posedge clk or negedge reset) begin
         bram_out_rd_addr <= 14'd0;
         tx_start         <= 1'b0;
         tx_byte          <= 8'd0;
-        tx_fetch_state   <= 2'd0;
+        tx_fsm           <= TX_FETCH_ADDR;
     end
     else begin
         tx_start <= 1'b0;   
 
         if (fsm_state == TRANSMIT) begin
-            if (tx_fetch_state == 2'd0 && !tx_done) begin
-                bram_out_rd_addr <= tx_byte_count;
-                tx_fetch_state   <= 2'd1;
-            end
-            else if (tx_fetch_state == 2'd1) begin
-                tx_fetch_state   <= 2'd2;
-            end
-            else if (tx_fetch_state == 2'd2) begin
-                tx_byte        <= bram_out_rd_data;
-                tx_start       <= 1'b1;
-                tx_fetch_state <= 2'd0;
-            end
-
-            if (tx_done) begin
-                if (tx_byte_count == 14'd15875)
-                    tx_byte_count <= 14'd0;
-                else
-                    tx_byte_count <= tx_byte_count + 14'd1;
-            end
+            case (tx_fsm)
+                TX_FETCH_ADDR: begin
+                    bram_out_rd_addr <= tx_byte_count;
+                    tx_fsm           <= TX_FETCH_WAIT;
+                end
+                TX_FETCH_WAIT: begin
+                    tx_fsm           <= TX_PULSE_START;
+                end
+                TX_PULSE_START: begin
+                    tx_byte          <= bram_out_rd_data;
+                    tx_start         <= 1'b1;
+                    tx_fsm           <= TX_WAIT_DONE;
+                end
+                TX_WAIT_DONE: begin
+                    if (tx_done) begin
+                        if (tx_byte_count < 14'd15875) begin
+                            // Still sending image bytes
+                            tx_byte_count <= tx_byte_count + 14'd1;
+                            tx_fsm        <= TX_FETCH_ADDR;
+                        end
+                        else if (tx_byte_count == 14'd15875) begin
+                            // Last image byte done → start cycle-count phase
+                            tx_byte_count  <= 14'd15876;
+                            cycle_byte_sel <= 2'd0;
+                            tx_fsm         <= TX_SEND_CYCLES;
+                        end
+                        else if (tx_byte_count < 14'd15879) begin
+                            // Intermediate cycle-count byte done → next one
+                            tx_byte_count <= tx_byte_count + 14'd1;
+                            tx_fsm        <= TX_SEND_CYCLES;
+                        end
+                        // tx_byte_count == 15879: last cycle byte done
+                        // Main FSM catches this and transitions to IDLE_DONE
+                    end
+                end
+                TX_SEND_CYCLES: begin
+                    // Send 4 bytes of cycle_count, MSB first
+                    case (cycle_byte_sel)
+                        2'd0: tx_byte <= cycle_count[31:24];
+                        2'd1: tx_byte <= cycle_count[23:16];
+                        2'd2: tx_byte <= cycle_count[15:8];
+                        2'd3: tx_byte <= cycle_count[7:0];
+                    endcase
+                    tx_start       <= 1'b1;
+                    tx_fsm         <= TX_WAIT_DONE;
+                    cycle_byte_sel <= cycle_byte_sel + 2'd1;
+                end
+            endcase
         end
         else begin
             tx_byte_count    <= 14'd0;
             bram_out_rd_addr <= 14'd0;
-            tx_fetch_state   <= 2'd0;
+            tx_fsm           <= TX_FETCH_ADDR;
+            cycle_byte_sel   <= 2'd0;
         end
     end
 end
@@ -183,11 +236,13 @@ always @(posedge clk or negedge reset) begin
             WAIT_IMAGE: begin
                 if (img_load_done)
                     fsm_state <= WAIT_START;
+                else if (sw_done)          // <--- ESCAPE HATCH ADDED HERE!
+                    fsm_state <= TRANSMIT; 
             end
             WAIT_START: begin
                 if (lb_start)
                     fsm_state <= PROCESSING;
-                else if (sw_done)           
+                else if (sw_done)            
                     fsm_state <= TRANSMIT;
             end
             PROCESSING: begin
@@ -195,9 +250,8 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
-                else if (sw_done) begin    // <-- BUG 3 FIX: Software backdoor exit
+                else if (sw_done)          // <--- BUG 3 FIX
                     fsm_state <= TRANSMIT;
-                end
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
@@ -206,7 +260,7 @@ always @(posedge clk or negedge reset) begin
                     drain_count <= drain_count + 3'd1;
             end
             TRANSMIT: begin
-                if (tx_done && tx_byte_count == 14'd15875)
+                if (tx_done && tx_byte_count == 14'd15879)
                     fsm_state <= IDLE_DONE;
             end
             IDLE_DONE: begin
@@ -303,15 +357,11 @@ mmio_decoder mmio_inst (
     .clk          (clk),
     .reset        (reset),
     .mem_write    (mem_write),
-    .waddr        (cpu_addr),   // Assuming you renamed 'addr' to 'waddr' in mmio_decoder
-    .raddr        (cpu_raddr),
+    .waddr        (cpu_addr),    // BUG 2 FIX: Write address
+    .raddr        (cpu_raddr),   // BUG 2 FIX: Read address
     .wdata        (cpu_wdata),
     .mem_read     (mem_read),
-
-    
-    // THIS IS THE FIX. We leave .rdata empty. It kills the timing loop and multi-driver error.
-    .rdata        (), 
-
+    .rdata        (mmio_rdata), 
     .kernel_we    (kernel_we),
     .kernel_index (kernel_addr),   
     .kernel_wdata (kernel_wdata),

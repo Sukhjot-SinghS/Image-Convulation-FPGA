@@ -83,54 +83,27 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// ── STAGE 4 — normalise + absolute value (registered) ────────────────────
-//
-// WHY THIS STAGE EXISTS (timing fix):
-//   The combinational chain  raw_sum → processed_sum → abs_sum → compare > 255
-//   was the critical path at 100 MHz on Artix-7.  The 21-bit two's-complement
-//   negation alone requires a carry chain (~4 ns), and chaining it with the
-//   21-bit comparison pushed the path to ~9 ns — over the 10 ns budget.
-//   Registering abs_sum here breaks the chain into two sub-paths, each < 5 ns.
-//
-// norm_en = 0 → Sobel/Sharpen  (no scaling, take abs)
-// norm_en = 1 → Blur           (divide by 16 via >>4, then abs — always ≥0)
+// CHANGE 2: processed_sum — applies shift for blur, passthrough for sobel/sharpen
+// norm_en = 0 → Sobel / Sharpen → use raw_sum directly
+// norm_en = 1 → Blur            → shift right 3 (divide by 8 ≈ divide by 9)
+wire signed [20:0] processed_sum;
+assign processed_sum = norm_en ? (raw_sum >>> 3) : raw_sum;
 
-wire signed [20:0] processed_comb;
-assign processed_comb = norm_en ? (raw_sum >>> 4) : raw_sum;
-
-wire signed [20:0] abs_comb;
-assign abs_comb = processed_comb[20] ? -processed_comb : processed_comb;
-
-reg signed [20:0] abs_s4;
-reg               valid_s4;
-reg        [13:0] idx_s4;
-
-always @(posedge clk or negedge rst) begin
-    if (!rst) begin
-        abs_s4   <= 21'd0;
-        valid_s4 <= 1'b0;
-        idx_s4   <= 14'd0;
-    end else begin
-        abs_s4   <= abs_comb;    // register the abs value
-        valid_s4 <= valid_s3;
-        idx_s4   <= idx_s3;
-    end
-end
-
-// OUTPUT STAGE — clamp abs_s4 to 0-255 (short combinational path: just
-//   check bits [20:8] are all zero; one level of OR + a 2-to-1 mux)
+// OUTPUT STAGE — clamp processed_sum to 0-255
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         pixel_out     <= 8'd0;
         out_valid     <= 1'b0;
         pixel_idx_out <= 14'd0;
     end else begin
-        out_valid     <= valid_s4;
-        pixel_idx_out <= idx_s4;
-        if (abs_s4 > $signed(21'd255))
+        out_valid     <= valid_s3;
+        pixel_idx_out <= idx_s3;
+        if      (processed_sum < $signed(21'd0))
+            pixel_out <= 8'd0;
+        else if (processed_sum > $signed(21'd255))
             pixel_out <= 8'd255;
         else
-            pixel_out <= abs_s4[7:0];
+            pixel_out <= processed_sum[7:0];
     end
 end
 
