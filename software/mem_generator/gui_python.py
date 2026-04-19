@@ -443,7 +443,7 @@ class UARTWorker:
     """
 
     TX_BYTES = 16_384   # 128 × 128 × 1
-    RX_BYTES = 15_876   # 126 × 126 × 1
+    RX_BYTES = 15_880   # 126 × 126 × 1 (15876) + 4 bytes cycle count
     CHUNK_SZ = 512      # write chunk size for smooth progress updates
 
     def __init__(
@@ -585,6 +585,7 @@ class FPGACoprocessorApp(ctk.CTk):
         # state
         self._serial_conn : Optional[serial.Serial] = None
         self._source_img  : Optional[Image.Image]   = None
+        self._result_img  : Optional[Image.Image]   = None  # Added: store latest convolved image
         self._result_q    : queue.Queue              = queue.Queue()
         self._running     : bool                     = False
 
@@ -857,6 +858,23 @@ class FPGACoprocessorApp(ctk.CTk):
         )
         self._run_btn.pack(side="left", padx=(0, 16))
 
+        # SAVE button (middle)
+        self._save_btn = ctk.CTkButton(
+            ctrl_inner,
+            text="  💾  SAVE OUTPUT",
+            height=42,
+            width=200,
+            state="disabled",
+            fg_color=Theme.BG_SURFACE,
+            hover_color=Theme.BG_CARD,
+            text_color=Theme.TEXT_PRI,
+            border_width=1, border_color=Theme.BG_BORDER,
+            font=("Consolas", 12, "bold"),
+            corner_radius=6,
+            command=self._save_image,
+        )
+        self._save_btn.pack(side="left", padx=(0, 16))
+
         # progress + status (right of run btn)
         pbar_col = ctk.CTkFrame(ctrl_inner, fg_color="transparent")
         pbar_col.pack(side="left", fill="x", expand=True)
@@ -1004,6 +1022,8 @@ class FPGACoprocessorApp(ctk.CTk):
 
             self._canvas_orig.display_image(img_128, badge="128×128 · L")
             self._canvas_hw.clear()
+            self._result_img = None
+            self._save_btn.configure(state="disabled")
             self._progress_bar.reset()
 
             self._log.separator()
@@ -1033,6 +1053,8 @@ class FPGACoprocessorApp(ctk.CTk):
         self._running = True
         self._update_run_btn_state()
         self._canvas_hw.clear()
+        self._result_img = None
+        self._save_btn.configure(state="disabled")
         self._progress_bar.reset()
 
         payload = np.array(self._source_img).tobytes()
@@ -1086,11 +1108,37 @@ class FPGACoprocessorApp(ctk.CTk):
             self._on_error(msg["message"])
 
     def _on_result(self, raw: bytes) -> None:
-        """Reconstruct image from received bytes and display it."""
-        arr   = np.frombuffer(raw, dtype=np.uint8).reshape((126, 126))
+        """Reconstruct image from received bytes and display it.
+        
+        The FPGA sends 15880 bytes:
+          - bytes  0..15875  → 126×126 convolved image pixels
+          - bytes 15876..15879 → 32-bit cycle count (big-endian)
+        """
+        IMG_BYTES = 15_876  # 126 × 126
+
+        # ── extract image data ────────────────────────────────────────
+        img_data = raw[:IMG_BYTES]
+        arr   = np.frombuffer(img_data, dtype=np.uint8).reshape((126, 126))
         img   = Image.fromarray(arr, mode="L")
 
         self._canvas_hw.display_image(img, badge="126×126 · L")
+        self._result_img = img
+        self._save_btn.configure(state="normal")
+
+        # ── extract cycle count (last 4 bytes, big-endian) ────────────
+        if len(raw) >= IMG_BYTES + 4:
+            cycle_bytes = raw[IMG_BYTES:IMG_BYTES + 4]
+            cycle_count = int.from_bytes(cycle_bytes, byteorder='big')
+            self._log.log("OK",
+                f"⏱  BENCHMARK CYCLE COUNT  ·  {cycle_count:,} cycles")
+            # Estimate wall-clock time at 25 MHz
+            time_ms = cycle_count / 25_000  # 25 MHz → ms
+            self._log.log("OK",
+                f"   Estimated time @ 25 MHz  ·  {time_ms:,.2f} ms  "
+                f"({time_ms / 1000:,.3f} s)")
+        else:
+            self._log.log("WARN", "Cycle count not received (legacy firmware?).")
+
         self._log.log("OK", "Processing complete. Output rendered on right canvas.")
         self._update_status("✓  Convolution complete — output displayed.", Theme.OK)
         self._progress_bar.set_progress(100)
@@ -1115,6 +1163,37 @@ class FPGACoprocessorApp(ctk.CTk):
         self._serial_conn = None
         self._running     = False
         self._update_run_btn_state()
+
+    def _save_image(self) -> None:
+        """Export the convolved HW result to a file."""
+        if self._result_img is None:
+            return
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        def_name = f"convolved_output_{ts}.png"
+
+        path = filedialog.asksaveasfilename(
+            title="Export Convolved Result",
+            initialfile=def_name,
+            defaultextension=".png",
+            filetypes=[
+                ("PNG Image", "*.png"),
+                ("JPEG Image", "*.jpg"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        try:
+            self._result_img.save(path)
+            self._log.log("OK", f"Output exported successfully to: {Path(path).name}")
+            self._update_status(f"✓ exported to {Path(path).name}", Theme.OK)
+        except Exception as exc:
+            self._log.log("ERR", f"Export failed: {exc}")
+            messagebox.showerror("Export Error", f"Could not save image:\n{exc}")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -23,7 +23,10 @@ module top_fsm #(
     input  wire [31:0] cpu_addr,    // CPU WRITE address bus (from WB)
     input  wire [31:0] cpu_raddr,   // <--- BUG 2 FIX: NEW READ address bus (from EX)
     input  wire [31:0] cpu_wdata,   // CPU write data
-    output wire [31:0] cpu_rdata    // CPU read data
+    output wire [31:0] cpu_rdata,   // CPU read data
+
+    // ── Benchmark cycle counter (from top_fpga.v) ────────────
+    input  wire [31:0] cycle_count  // frozen cycle count for UART TX
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -147,6 +150,9 @@ localparam TX_FETCH_ADDR = 3'd0;
 localparam TX_FETCH_WAIT = 3'd1;
 localparam TX_PULSE_START= 3'd2;
 localparam TX_WAIT_DONE  = 3'd3;
+localparam TX_SEND_CYCLES= 3'd4;  // NEW: transmit 4 cycle-count bytes
+
+reg [1:0] cycle_byte_sel;  // selects which byte of cycle_count to send (0=MSB..3=LSB)
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
@@ -175,13 +181,37 @@ always @(posedge clk or negedge reset) begin
                 end
                 TX_WAIT_DONE: begin
                     if (tx_done) begin
-                        if (tx_byte_count == 14'd15875)
-                            tx_byte_count <= 14'd0;
-                        else
+                        if (tx_byte_count < 14'd15875) begin
+                            // Still sending image bytes
                             tx_byte_count <= tx_byte_count + 14'd1;
-                            
-                        tx_fsm <= TX_FETCH_ADDR;
+                            tx_fsm        <= TX_FETCH_ADDR;
+                        end
+                        else if (tx_byte_count == 14'd15875) begin
+                            // Last image byte done → start cycle-count phase
+                            tx_byte_count  <= 14'd15876;
+                            cycle_byte_sel <= 2'd0;
+                            tx_fsm         <= TX_SEND_CYCLES;
+                        end
+                        else if (tx_byte_count < 14'd15879) begin
+                            // Intermediate cycle-count byte done → next one
+                            tx_byte_count <= tx_byte_count + 14'd1;
+                            tx_fsm        <= TX_SEND_CYCLES;
+                        end
+                        // tx_byte_count == 15879: last cycle byte done
+                        // Main FSM catches this and transitions to IDLE_DONE
                     end
+                end
+                TX_SEND_CYCLES: begin
+                    // Send 4 bytes of cycle_count, MSB first
+                    case (cycle_byte_sel)
+                        2'd0: tx_byte <= cycle_count[31:24];
+                        2'd1: tx_byte <= cycle_count[23:16];
+                        2'd2: tx_byte <= cycle_count[15:8];
+                        2'd3: tx_byte <= cycle_count[7:0];
+                    endcase
+                    tx_start       <= 1'b1;
+                    tx_fsm         <= TX_WAIT_DONE;
+                    cycle_byte_sel <= cycle_byte_sel + 2'd1;
                 end
             endcase
         end
@@ -189,6 +219,7 @@ always @(posedge clk or negedge reset) begin
             tx_byte_count    <= 14'd0;
             bram_out_rd_addr <= 14'd0;
             tx_fsm           <= TX_FETCH_ADDR;
+            cycle_byte_sel   <= 2'd0;
         end
     end
 end
@@ -229,7 +260,7 @@ always @(posedge clk or negedge reset) begin
                     drain_count <= drain_count + 3'd1;
             end
             TRANSMIT: begin
-                if (tx_done && tx_byte_count == 14'd15875)
+                if (tx_done && tx_byte_count == 14'd15879)
                     fsm_state <= IDLE_DONE;
             end
             IDLE_DONE: begin

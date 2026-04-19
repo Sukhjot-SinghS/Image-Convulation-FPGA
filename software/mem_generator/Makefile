@@ -39,7 +39,7 @@
 # SRC_MMIO = hw_conv_mmio.c
 # SRC_MULDIV = mul_div_test.c
 # SRC_BLUR = sw_blur.c
-# SRC_SOBEL = sw_sobel.c
+# SRC_GAU_BLUR = sw_gaussian_blur.c
 
 
 # # # extra -->
@@ -144,8 +144,8 @@
 # 	@echo "Hex files synchronized to Hardware directory!"
 
 
-# sw_sobel: $(SRC_SOBEL)
-# 	$(CC) -c $(CFLAGS) sw_sobel.c -o code.elf $(LDFLAGS)
+# sw_gaussian_blur: $(SRC_GAU_BLUR)
+# 	$(CC) -c $(CFLAGS) sw_gaussian_blur.c -o code.elf $(LDFLAGS)
 # 	$(OBJCOPY) -O binary code.elf ./imem_dmem/imem.bin
 # 	$(OBJCOPY) -j .data -j .bss -O binary code.elf ./imem_dmem/dmem.bin
 # 	$(OBJDUMP) -d code.elf > ./imem_dmem/code.dis
@@ -202,7 +202,7 @@ SRC_FSW = filter_switch.c
 SRC_MMIO = hw_conv_mmio.c
 SRC_MULDIV = mul_div_test.c
 SRC_BLUR = sw_blur.c
-SRC_SOBEL = sw_sobel.c
+SRC_GAU_BLUR = sw_gaussian_blur.c
 
 
 # # extra -->
@@ -292,8 +292,8 @@ sw_blur: $(SRC_BLUR) start.S
 	@echo "Hex files synchronized to Hardware directory!"
 
 
-sw_sobel: $(SRC_SOBEL) start.S
-	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
+sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_GAU_BLUR) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
@@ -306,4 +306,4 @@ sw_sobel: $(SRC_SOBEL) start.S
 
 # /////clean function
 clean:
-	$(RM) $(TARGET) ./imem_dmem/imem.bin ./imem_dmem/imem.hex ./imem_dmem/dmem.bin ./imem_dmem/dmem.hex ./imem_dmem/code.dis
+	-del /F /Q $(TARGET) .\imem_dmem\imem.bin .\imem_dmem\imem.hex .\imem_dmem\dmem.bin .\imem_dmem\dmem.hex .\imem_dmem\code.dis

@@ -65,6 +65,41 @@ module top_fpga #(
     wire [31:0] dmem_raddr, dmem_waddr, dmem_wdata;
     wire [3:0]  dmem_wstrb;
 
+    // ========================================================
+    // BENCHMARK CYCLE COUNTER
+    // Snoops DMEM write bus for the BENCHMARK_FLAG at 0x00000F00
+    //   Write 0x11111111 → START counting
+    //   Write 0x99999999 → STOP  counting (freeze value)
+    // ========================================================
+    reg         cycle_counting;
+    reg  [31:0] cycle_counter;
+    reg  [31:0] cycle_count_frozen;  // latched value sent via UART
+
+    wire bench_hit = dmem_we && (dmem_waddr == 32'h00000F00);
+
+    always @(posedge clk_slow or negedge sys_resetn) begin
+        if (!sys_resetn) begin
+            cycle_counting     <= 1'b0;
+            cycle_counter      <= 32'd0;
+            cycle_count_frozen <= 32'd0;
+        end
+        else begin
+            // Detect start / stop markers
+            if (bench_hit && dmem_wdata == 32'h11111111) begin
+                cycle_counting <= 1'b1;
+                cycle_counter  <= 32'd0;  // reset on start
+            end
+            else if (bench_hit && dmem_wdata == 32'h99999999) begin
+                cycle_counting     <= 1'b0;
+                cycle_count_frozen <= cycle_counter;  // freeze
+            end
+
+            // Free-running increment while active
+            if (cycle_counting)
+                cycle_counter <= cycle_counter + 32'd1;
+        end
+    end
+
     // PIPE ↔ MMIO WIRES
     wire        mmio_we;
     wire        mmio_re;
@@ -128,7 +163,8 @@ module top_fpga #(
         .cpu_addr   (mmio_addr),
         .cpu_wdata  (mmio_wdata),
         .cpu_rdata  (mmio_rdata),
-        .cpu_raddr  (mmio_raddr)
+        .cpu_raddr  (mmio_raddr),
+        .cycle_count(cycle_count_frozen)   // ← benchmark cycle count
     );
 
 endmodule
