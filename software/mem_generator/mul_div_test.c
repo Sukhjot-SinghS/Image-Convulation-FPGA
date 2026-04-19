@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // /**
 //  * mul_div_test.c
 //  * Author: Abhirup Paul
@@ -198,6 +199,8 @@
 
 
 
+=======
+>>>>>>> origin/sukhjot
 
 /**
  * mul_div_52_test.c
@@ -319,6 +322,7 @@ int main() {
    - INT_MIN/-1 in signed division: returns INT_MIN due to 2's complement overflow.
    - Signed/unsigned upper multiplication results: check typecasting as C does not truncate by default!
    - Negative result right shift: arithmetic (sign-extending) right shift must be used.
+<<<<<<< HEAD
 */
 
 
@@ -430,4 +434,6 @@ int main() {
 
     return 0;
 }
+=======
+>>>>>>> origin/sukhjot
 */

@@ -21,7 +21,11 @@
 
 # # extra -->
 # # Change from -march=rv32i to -march=rv32im
+<<<<<<< HEAD
 # CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O1 -Wall
+=======
+# CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O0 -Wall
+>>>>>>> origin/sukhjot
 # # Add linker flags to use your link.ld script
 # LDFLAGS = -nostdlib -T link.ld
 # # <-- extra
@@ -39,7 +43,11 @@
 # SRC_MMIO = hw_conv_mmio.c
 # SRC_MULDIV = mul_div_test.c
 # SRC_BLUR = sw_blur.c
+<<<<<<< HEAD
 # SRC_SOBEL = sw_sobel.c
+=======
+# SRC_GAU_BLUR = sw_gaussian_blur.c
+>>>>>>> origin/sukhjot
 
 
 # # # extra -->
@@ -144,6 +152,7 @@
 # 	@echo "Hex files synchronized to Hardware directory!"
 
 
+<<<<<<< HEAD
 # sw_sobel: $(SRC_SOBEL)
 # 	$(CC) -c $(CFLAGS) sw_sobel.c -o code.elf $(LDFLAGS)
 # 	$(OBJCOPY) -O binary code.elf ./imem_dmem/imem.bin
@@ -319,6 +328,10 @@
 
 # sw_sobel: $(SRC_SOBEL)
 # 	$(CC) -c $(CFLAGS) sw_sobel.c -o code.elf $(LDFLAGS)
+=======
+# sw_gaussian_blur: $(SRC_GAU_BLUR)
+# 	$(CC) -c $(CFLAGS) sw_gaussian_blur.c -o code.elf $(LDFLAGS)
+>>>>>>> origin/sukhjot
 # 	$(OBJCOPY) -O binary code.elf ./imem_dmem/imem.bin
 # 	$(OBJCOPY) -j .data -j .bss -O binary code.elf ./imem_dmem/dmem.bin
 # 	$(OBJDUMP) -d code.elf > ./imem_dmem/code.dis
@@ -513,6 +526,7 @@ OBJDUMP = riscv-none-elf-objdump
 OBJCOPY = riscv-none-elf-objcopy
 READELF = riscv-none-elf-readelf
 
+<<<<<<< HEAD
 # Architecture Flags
 # -march=rv32im: Enables Hardware Multiply/Divide
 CFLAGS  = -march=rv32im -mabi=ilp32 -ffreestanding -O1 -Wall
@@ -525,6 +539,42 @@ SRC_MMIO     = hw_conv_mmio.c
 SRC_MULDIV   = mul_div_test.c
 SRC_BLUR     = sw_blur.c
 SRC_SOBEL    = sw_sobel.c
+=======
+
+# # CFLAGS = -march=rv32i -mabi=ilp32 -nostdlib -Ttext 0x00000000
+# CFLAGS  = -march=rv32i -mabi=ilp32
+
+
+# extra -->
+# Change from -march=rv32i to -march=rv32im
+CFLAGS = -march=rv32im -mabi=ilp32 -ffreestanding -O1 -Wall
+# Add linker flags to use your link.ld script
+LDFLAGS = -nostdlib -T link.ld
+# <-- extra
+
+
+# # Architecture Flags
+# # -march=rv32im: Enables Shaurya's Multiply/Divide hardware
+# CFLAGS  = -march=rv32im -mabi=ilp32 -ffreestanding -O2 -Wall
+# LDFLAGS = -nostdlib -T link.ld
+
+
+SRC_FIB      = code_fib.c
+SRC_ADDITION = code_addition.c
+SRC_FSW = filter_switch.c
+SRC_MMIO = hw_conv_mmio.c
+SRC_MULDIV = mul_div_test.c
+SRC_BLUR = sw_blur.c
+SRC_GAU_BLUR = sw_gaussian_blur.c
+
+
+# # extra -->
+# # Directories
+# SRC_DIR = src
+# HEX_DIR = hex
+# BIN_DIR = bin
+# # <-- extra
+>>>>>>> origin/sukhjot
 
 TARGET   = code.elf
 OUT_DIR  = ./imem_dmem
@@ -533,8 +583,13 @@ OUT_DIR  = ./imem_dmem
 
 fib: $(SRC_FIB) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_FIB) -o $(TARGET) $(LDFLAGS)
+<<<<<<< HEAD
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -542,10 +597,18 @@ fib: $(SRC_FIB) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 addition: $(SRC_ADDITION) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_ADDITION) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+
+addition: $(SRC_ADDITION) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_ADDITION) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -553,10 +616,18 @@ addition: $(SRC_ADDITION) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 filter_switch: $(SRC_FSW) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_FSW) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+
+filter_switch: $(SRC_FSW) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_FSW) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -564,10 +635,18 @@ filter_switch: $(SRC_FSW) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 hw_conv_mmio: $(SRC_MMIO) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_MMIO) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+
+hw_conv_mmio: $(SRC_MMIO) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_MMIO) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -575,10 +654,18 @@ hw_conv_mmio: $(SRC_MMIO) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 mul_div_test: $(SRC_MULDIV) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_MULDIV) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+
+mul_div_test: $(SRC_MULDIV) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_MULDIV) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -586,10 +673,18 @@ mul_div_test: $(SRC_MULDIV) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 sw_blur: $(SRC_BLUR) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_BLUR) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+=======
+
+sw_blur: $(SRC_BLUR) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_BLUR) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+>>>>>>> origin/sukhjot
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -597,9 +692,16 @@ sw_blur: $(SRC_BLUR) start.S
 	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
+<<<<<<< HEAD
 sw_sobel: $(SRC_SOBEL) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -j .text -O binary $(TARGET) ./imem_dmem/imem.bin
+=======
+
+sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_GAU_BLUR) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+>>>>>>> origin/sukhjot
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
@@ -609,4 +711,8 @@ sw_sobel: $(SRC_SOBEL) start.S
 	@echo "Hex files synchronized to Hardware directory!"
 
 clean:
+<<<<<<< HEAD
 	$(RM) $(TARGET) ./imem_dmem/imem.bin ./imem_dmem/imem.hex ./imem_dmem/dmem.bin ./imem_dmem/dmem.hex ./imem_dmem/code.dis
+=======
+	-del /F /Q $(TARGET) .\imem_dmem\imem.bin .\imem_dmem\imem.hex .\imem_dmem\dmem.bin .\imem_dmem\dmem.hex .\imem_dmem\code.dis
+>>>>>>> origin/sukhjot
