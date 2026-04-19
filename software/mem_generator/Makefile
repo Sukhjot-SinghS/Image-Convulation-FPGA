@@ -259,7 +259,7 @@ filter_switch: $(SRC_FSW) start.S
 hw_conv_mmio: $(SRC_MMIO) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_MMIO) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
-	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
