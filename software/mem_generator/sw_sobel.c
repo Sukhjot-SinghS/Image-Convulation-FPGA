@@ -159,7 +159,7 @@
 
 /*
  * sw_sobel.c
- * Bare-metal Sobel Edge Detection via MMIO BRAM
+ * Bare-metal Software Sobel Edge Detection via MMIO BRAM
  */
 
 #include <stdint.h>
@@ -177,7 +177,7 @@
 #define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00)
 #define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
 
-/* 1-cycle latency BRAM read macro */
+/* Safe 1-cycle latency BRAM read macro */
 static inline uint8_t read_pixel(int row, int col) {
     volatile uint8_t *addr = &BRAM_IN_BASE[row * IMG_W + col];
     (void)(*addr);          
@@ -189,7 +189,6 @@ static inline void write_pixel(int row, int col, uint8_t val) {
     BRAM_OUT_BASE[(row - 1) * OUT_W + (col - 1)] = val;
 }
 
-// Simple absolute value function
 static inline int32_t abs_val(int32_t x) {
     return (x < 0) ? -x : x;
 }
@@ -197,42 +196,41 @@ static inline int32_t abs_val(int32_t x) {
 volatile int dummy_counter;
 
 int main(void) {
-    // 1. The Un-killable Delay Loop (Wait for Python GUI)
+    // 1. Wait for Python GUI
     for (int i = 0; i < 50000000; i++) {
         dummy_counter = i;
     }
     
-    /* ── START TIMER ────────────────────────────────────────── */
+    // 2. Start Timer
     BENCHMARK_FLAG = 0x11111111;
 
-    // 2. Perform Sobel Edge Detection
+    // 3. Perform Software Sobel Edge Detection
     for (int r = 1; r < IMG_H - 1; r++) {
         for (int c = 1; c < IMG_W - 1; c++) {
             
-            // Abhirup, drop your Gx and Gy kernel logic here!
-            // Use read_pixel(row, col) to fetch the 3x3 neighborhood.
-            // Example: int32_t top_left = (int32_t)read_pixel(r - 1, c - 1);
-            
-            int32_t gx = 0; // Calculate this
-            int32_t gy = 0; // Calculate this
+            int32_t gx = 
+                (-1 * (int32_t)read_pixel(r-1, c-1)) + (1 * (int32_t)read_pixel(r-1, c+1)) +
+                (-2 * (int32_t)read_pixel(r, c-1))   + (2 * (int32_t)read_pixel(r, c+1)) +
+                (-1 * (int32_t)read_pixel(r+1, c-1)) + (1 * (int32_t)read_pixel(r+1, c+1));
 
-            // Magnitude approximation
+            int32_t gy = 
+                (-1 * (int32_t)read_pixel(r-1, c-1)) + (-2 * (int32_t)read_pixel(r-1, c)) + (-1 * (int32_t)read_pixel(r-1, c+1)) +
+                ( 1 * (int32_t)read_pixel(r+1, c-1)) + ( 2 * (int32_t)read_pixel(r+1, c)) + ( 1 * (int32_t)read_pixel(r+1, c+1));
+
             int32_t mag = abs_val(gx) + abs_val(gy);
 
-            // Clamp to 255
             if (mag > 255) mag = 255;
 
             write_pixel(r, c, (uint8_t)mag);
         }
     }
 
-    /* ── STOP TIMER ─────────────────────────────────────────── */
+    // 4. Stop Timer
     BENCHMARK_FLAG = 0x99999999;
 
-    /* ── SIGNAL DONE → top_fsm goes to TRANSMIT ─────────────── */
+    // 5. Signal UART to transmit
     SW_DONE_REG = 1;
 
-    /* Halt CPU */
     while (1) {}
     return 0;
 }
