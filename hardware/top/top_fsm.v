@@ -250,8 +250,10 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
-                else if (sw_done)          // <--- BUG 3 FIX
-                    fsm_state <= TRANSMIT;
+                // sw_done is intentionally NOT handled here:
+                // The CPU fires sw_done only AFTER polling HW_STATUS_DONE=1,
+                // so by then lb_done has already fired and we are in DRAIN/TRANSMIT.
+                // Handling sw_done here would abort a running convolution → black image.
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
@@ -313,6 +315,7 @@ line_buffer #(.IMG_W(IMG_W), .IMG_H(IMG_H)) lb_inst (
     .p20(p20), .p21(p21), .p22(p22),
     .window_valid (window_valid),
     .out_pixel_idx(out_pixel_idx)
+);
 
 conv_engine ce_inst (
     .clk          (clk),

@@ -12,7 +12,6 @@ module mmio_decoder (
     input  wire        mem_write,
     input  wire        mem_read,
     
-    // BUG 1 FIX: rdata is now a reg updated on posedge clk (1-cycle latency)
     output reg  [31:0] rdata,
 
     // Kernel Regfile Interface
@@ -24,7 +23,7 @@ module mmio_decoder (
     output reg         start,
     output reg         sw_done,      // Software Doorbell!
     input  wire        done_in,
-    input  wire        img_ready     // <--- ADDED: Tells CPU image is fully loaded via UART
+    input  wire        img_ready     // Tells CPU image is fully loaded via UART
 );
 
 localparam KERNEL_BASE  = 32'h80000000;
@@ -35,6 +34,11 @@ localparam SW_DONE_ADDR = 32'h80000034;
 localparam IMG_READY_ADDR = 32'h80000038;
 
 reg done_reg;
+
+// Combinatorial detection of CPU writing HW_CMD_START=1
+// Used to clear done_reg in the SAME cycle as the write, not 1 cycle later.
+// This eliminates the race window where a stale done=1 could be read.
+wire cpu_start_detected = mem_write && waddr == START_ADDR && wdata[0];
 
 always @(posedge clk) begin
     if (!reset) begin
@@ -57,7 +61,7 @@ always @(posedge clk) begin
         // ==========================================
         
         // Hardware Coprocessor Start
-        if (mem_write && waddr == START_ADDR && wdata[0])
+        if (cpu_start_detected)
             start <= 1;
             
         // Software Mode Done Doorbell
@@ -79,15 +83,17 @@ always @(posedge clk) begin
         end
 
         // Hardware Done Latch
-        if (start)
-            done_reg <= 0;
+        // FIX: Clear done_reg on EITHER the combinatorial write detection (same cycle)
+        // OR on the registered start (next cycle). The double guard ensures done_reg
+        // is 0 before the CPU's first poll, which arrives ~4+ cycles after the write.
+        if (cpu_start_detected || start)
+            done_reg <=0;
         else if (done_in)
             done_reg <= 1;
 
         // ==========================================
         // 2. READ LOGIC (Uses 'raddr')
         // ==========================================
-        // BUG 1 & 2 FIX: Synchronous read using raddr matching DMEM latency.
         if (mem_read) begin
             if (raddr == STATUS_ADDR)
                 rdata <= {31'b0, done_reg};
