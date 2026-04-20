@@ -313,7 +313,6 @@ line_buffer #(.IMG_W(IMG_W), .IMG_H(IMG_H)) lb_inst (
     .p20(p20), .p21(p21), .p22(p22),
     .window_valid (window_valid),
     .out_pixel_idx(out_pixel_idx)
-);
 
 conv_engine ce_inst (
     .clk          (clk),
@@ -367,7 +366,8 @@ mmio_decoder mmio_inst (
     .kernel_wdata (kernel_wdata),
     .start        (lb_start),
     .sw_done      (sw_done),
-    .done_in      (lb_done)
+    .done_in      (lb_done),
+    .img_ready    ((fsm_state == WAIT_START) || (fsm_state == PROCESSING) || (fsm_state == DRAIN))
 );
-
+// comment diya h yha 
 endmodule

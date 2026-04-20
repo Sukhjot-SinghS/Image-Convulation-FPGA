@@ -23,7 +23,8 @@ module mmio_decoder (
     // Control Signals
     output reg         start,
     output reg         sw_done,      // Software Doorbell!
-    input  wire        done_in       
+    input  wire        done_in,
+    input  wire        img_ready     // <--- ADDED: Tells CPU image is fully loaded via UART
 );
 
 localparam KERNEL_BASE  = 32'h80000000;
@@ -31,6 +32,7 @@ localparam START_ADDR   = 32'h80000024;
 localparam STATUS_ADDR  = 32'h80000028;
 localparam NORM_ADDR    = 32'h80000030;
 localparam SW_DONE_ADDR = 32'h80000034; 
+localparam IMG_READY_ADDR = 32'h80000038;
 
 reg done_reg;
 
@@ -89,6 +91,8 @@ always @(posedge clk) begin
         if (mem_read) begin
             if (raddr == STATUS_ADDR)
                 rdata <= {31'b0, done_reg};
+            else if (raddr == IMG_READY_ADDR)
+                rdata <= {31'b0, img_ready};
             else
                 rdata <= 32'd0;
         end else begin

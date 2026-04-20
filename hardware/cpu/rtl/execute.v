@@ -115,11 +115,17 @@ assign branch_stall  = wb_branch_nxt_i || wb_branch_i;
 
 always @(*) begin
 	next_pc = fetch_pc + 4;
-	branch_taken = !branch_stall;
+	branch_taken = 0;
 
 	case (1'b1)
-    	jal  : next_pc = pc + execute_imm;
-    	jalr : next_pc = alu_operand1 + execute_imm;
+    	jal  : begin
+            next_pc = pc + execute_imm;
+            branch_taken = 1'b1;
+        end
+    	jalr : begin
+            next_pc = alu_operand1 + execute_imm;
+            branch_taken = 1'b1;
+        end
 
     	branch: begin
         	case (alu_op)
@@ -127,44 +133,44 @@ always @(*) begin
                 	next_pc = (ex_result_subs == 0)
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (ex_result_subs != 0)
-                    	branch_taken = 1'b0;
+                	if (ex_result_subs == 0)
+                    	branch_taken = 1'b1;
             	end
             	BNE:  begin
                 	next_pc = (ex_result_subs != 0)
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (ex_result_subs == 0)
-                    	branch_taken = 1'b0;
+                	if (ex_result_subs != 0)
+                    	branch_taken = 1'b1;
             	end
 
             	BLT:  begin
                 	next_pc = ex_result_subs[32]
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (!ex_result_subs[32])
-                    	branch_taken = 1'b0;
+                	if (ex_result_subs[32])
+                    	branch_taken = 1'b1;
             	end
             	BGE:  begin
                 	next_pc = !ex_result_subs[32]
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (ex_result_subs[32])
-                    	branch_taken = 1'b0;
+                	if (!ex_result_subs[32])
+                    	branch_taken = 1'b1;
             	end
             	BLTU: begin//we changed it ... as per our ex_result_subu logic
                 	next_pc = !ex_result_subu[32]
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (ex_result_subu[32])
-                    	branch_taken = 1'b0;
+                	if (!ex_result_subu[32])
+                    	branch_taken = 1'b1;
             	end
             	BGEU: begin
                 	next_pc = ex_result_subu[32]
                           	? pc + execute_imm
                           	: fetch_pc + 4;
-                	if (!ex_result_subu[32])
-                    	branch_taken = 1'b0;
+                	if (ex_result_subu[32])
+                    	branch_taken = 1'b1;
             	end
             	default: next_pc = fetch_pc+4;///// // sequential execution
         	endcase

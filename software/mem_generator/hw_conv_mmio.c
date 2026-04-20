@@ -11,6 +11,7 @@
 
 // UART Transmission Trigger (Sukhjot's MMIO Bridge)
 #define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
+#define HW_IMG_READY   (*(volatile uint32_t*)0x80000038)
 
 volatile int8_t gaussian_blur[9] = { 1,  2,  1, 
                                      2,  4,  2, 
@@ -19,10 +20,13 @@ volatile int8_t gaussian_blur[9] = { 1,  2,  1,
 volatile int dummy_counter;
 
 int main() {
-    // 1. The Un-killable Delay Loop (Wait for Python GUI UART TX)
-    // 50M iterations = ~2-3 seconds grace period at 25MHz for the GUI to send the image!
-    for (int i = 0; i < 50000000; i++) {
-        dummy_counter = i;
+    // 1. SMART POLLING LOOP (Wait for Python GUI UART TX)
+    // The previous 50M iteration assembly loop took exactly 8 seconds.
+    // If the GUI wasn't started within that 8 seconds, the CPU would fire HW_CMD_START
+    // before the UART FSM was ready, causing a permanent deadlock at HW_STATUS_DONE.
+    // NOW, the hardware explicitly tells us when the image is fully buffered in BRAM!
+    while (HW_IMG_READY == 0) {
+        dummy_counter = 1; // Yield until GUI finishes sending 16KB image
     }
 
     // 2. Initialize Hardware Parameters
