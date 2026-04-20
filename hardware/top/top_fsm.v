@@ -32,7 +32,8 @@ module top_fsm #(
 // ─────────────────────────────────────────────────────────────
 //  Reset — UART needs active HIGH, rest of design active LOW
 // ─────────────────────────────────────────────────────────────
-wire uart_rst = ~reset;   // invert for UART modules
+//wire uart_rst = ~reset;   // invert for UART modules
+wire uart_rst = reset;   // don't invert for UART modules
 
 // ─────────────────────────────────────────────────────────────
 //  FSM States
