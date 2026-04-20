@@ -22,3 +22,13 @@
 # Keep the Vivado project file, but ignore its auto-generated backups
 *.xpr.backup*
 dfx_runtime.txt
+
+
+# Ignore all Vivado simulation binaries
+*.sdb
+*.elf
+*.dis
+*.bin
+
+# Ignore generated hex files in the CPU folder
+hardware/cpu/*.hex
