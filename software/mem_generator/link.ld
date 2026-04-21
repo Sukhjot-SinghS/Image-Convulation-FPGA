@@ -3,22 +3,26 @@
 
 MEMORY
 {
-    /* Instruction Memory (mapped via Satish's MMIO logic) */
-    RAM (xrw) : ORIGIN = 0x00000000, LENGTH = 4K
+    /* VMA definitions */
+    IMEM (rx)  : ORIGIN = 0x00000000, LENGTH = 4K
+    DMEM (rw)  : ORIGIN = 0x00000000, LENGTH = 4K
 }
 
 SECTIONS
 {
     .text : {
-        *(.text.startup)  /* <--- THIS IS THE MAGIC LINE. Forces Bootloader to 0x00 */
-        *(.text)          /* Then puts main() and other functions after it */
-    } > RAM
+        *(.text.startup)  /* Forces Bootloader to 0x00 in IMEM */
+        *(.text)
+        *(.rodata)
+    } > IMEM
 
-    .data : {
+    .data 0x00000000 : AT(0x1000) {
         *(.data)
-    } > RAM
+        *(.sdata)
+    } > DMEM
 
     .bss : {
         *(.bss)
-    } > RAM
+        *(.sbss)
+    } > DMEM
 }

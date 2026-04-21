@@ -12,7 +12,7 @@ module conv_engine (
     input  wire signed [7:0] k3, k4, k5,
     input  wire signed [7:0] k6, k7, k8,
 
-    input  wire        norm_en,        // CHANGE 1: new port added
+    input  wire        norm_en,
     input  wire        window_valid,
     input  wire [13:0] pixel_idx_in,
 
@@ -21,36 +21,48 @@ module conv_engine (
     output reg  [13:0] pixel_idx_out
 );
 
-// STAGE 1 — 9 parallel multiplications
-reg signed [16:0] prod0, prod1, prod2;
-reg signed [16:0] prod3, prod4, prod5;
-reg signed [16:0] prod6, prod7, prod8;
-reg        valid_s1;
+// ============================================================
+// HARDCODED GAUSSIAN BLUR — purely unsigned arithmetic
+// Kernel: [1 2 1; 2 4 2; 1 2 1]  sum=16  divide by 16 (>>4)
+//
+// This bypasses the kernel_regfile entirely to eliminate
+// any signed arithmetic or MMIO loading issues.
+// Once this is confirmed working, the generic kernel path
+// can be debugged separately.
+// ============================================================
+
+// STAGE 1 — Hardcoded weighted pixel values (all unsigned)
+// *1 = itself, *2 = left-shift 1, *4 = left-shift 2
+reg [9:0] w00, w01, w02;   // max: 255*4 = 1020 → 10 bits
+reg [9:0] w10, w11, w12;
+reg [9:0] w20, w21, w22;
+reg       valid_s1;
 reg [13:0] idx_s1;
 
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         valid_s1 <= 0; idx_s1 <= 0;
-        prod0<=0; prod1<=0; prod2<=0;
-        prod3<=0; prod4<=0; prod5<=0;
-        prod6<=0; prod7<=0; prod8<=0;
+        w00<=0; w01<=0; w02<=0;
+        w10<=0; w11<=0; w12<=0;
+        w20<=0; w21<=0; w22<=0;
     end else begin
         valid_s1 <= window_valid;
         idx_s1   <= pixel_idx_in;
-        prod0 <= $signed({1'b0, p00}) * k0;
-        prod1 <= $signed({1'b0, p01}) * k1;
-        prod2 <= $signed({1'b0, p02}) * k2;
-        prod3 <= $signed({1'b0, p10}) * k3;
-        prod4 <= $signed({1'b0, p11}) * k4;
-        prod5 <= $signed({1'b0, p12}) * k5;
-        prod6 <= $signed({1'b0, p20}) * k6;
-        prod7 <= $signed({1'b0, p21}) * k7;
-        prod8 <= $signed({1'b0, p22}) * k8;
+        // Gaussian kernel [1,2,1; 2,4,2; 1,2,1]
+        w00 <= {2'b0, p00};            // *1
+        w01 <= {1'b0, p01, 1'b0};      // *2 (shift left 1)
+        w02 <= {2'b0, p02};            // *1
+        w10 <= {1'b0, p10, 1'b0};      // *2
+        w11 <= {p11, 2'b0};            // *4 (shift left 2)
+        w12 <= {1'b0, p12, 1'b0};      // *2
+        w20 <= {2'b0, p20};            // *1
+        w21 <= {1'b0, p21, 1'b0};      // *2
+        w22 <= {2'b0, p22};            // *1
     end
 end
 
-// STAGE 2 — row-wise addition
-reg signed [18:0] sum_row0, sum_row1, sum_row2;
+// STAGE 2 — Row-wise addition (unsigned)
+reg [11:0] sum_row0, sum_row1, sum_row2;  // max per row: 1020+1020+1020 = 3060 → 12 bits
 reg        valid_s2;
 reg [13:0] idx_s2;
 
@@ -61,14 +73,14 @@ always @(posedge clk or negedge rst) begin
     end else begin
         valid_s2 <= valid_s1;
         idx_s2   <= idx_s1;
-        sum_row0 <= prod0 + prod1 + prod2;
-        sum_row1 <= prod3 + prod4 + prod5;
-        sum_row2 <= prod6 + prod7 + prod8;
+        sum_row0 <= w00 + w01 + w02;
+        sum_row1 <= w10 + w11 + w12;
+        sum_row2 <= w20 + w21 + w22;
     end
 end
 
-// STAGE 3 — final accumulation
-reg signed [20:0] raw_sum;
+// STAGE 3 — Final accumulation (unsigned)
+reg [13:0] raw_sum;   // max: 3060*3 = 9180 → 14 bits (but actual max = 255*16=4080 → 12 bits)
 reg        valid_s3;
 reg [13:0] idx_s3;
 
@@ -83,13 +95,8 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// CHANGE 2: processed_sum — applies shift for blur, passthrough for sobel/sharpen
-// norm_en = 0 → Sobel / Sharpen → use raw_sum directly
-// norm_en = 1 → Blur            → shift right 3 (divide by 8 ≈ divide by 9)
-wire signed [20:0] processed_sum;
-assign processed_sum = norm_en ? (raw_sum >>> 3) : raw_sum;
-
-// OUTPUT STAGE — clamp processed_sum to 0-255
+// OUTPUT STAGE — divide by 16 (>>4) and clamp to 0-255
+// Since raw_sum max = 4080, raw_sum>>4 max = 255. No clamping needed!
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         pixel_out     <= 8'd0;
@@ -98,12 +105,7 @@ always @(posedge clk or negedge rst) begin
     end else begin
         out_valid     <= valid_s3;
         pixel_idx_out <= idx_s3;
-        if      (processed_sum < $signed(21'd0))
-            pixel_out <= 8'd0;
-        else if (processed_sum > $signed(21'd255))
-            pixel_out <= 8'd255;
-        else
-            pixel_out <= processed_sum[7:0];
+        pixel_out     <= raw_sum[11:4];  // unsigned >>4 = divide by 16
     end
 end
 

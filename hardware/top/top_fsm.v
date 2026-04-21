@@ -250,16 +250,16 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
-                // sw_done is intentionally NOT handled here:
-                // The CPU fires sw_done only AFTER polling HW_STATUS_DONE=1,
-                // so by then lb_done has already fired and we are in DRAIN/TRANSMIT.
-                // Handling sw_done here would abort a running convolution → black image.
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
-                    fsm_state <= TRANSMIT;
+                    fsm_state <= 3'd6; // WAIT_TX_DB
                 else
                     drain_count <= drain_count + 3'd1;
+            end
+            3'd6: begin // WAIT_TX_DB
+                if (sw_done)
+                    fsm_state <= TRANSMIT;
             end
             TRANSMIT: begin
                 if (tx_done && tx_byte_count == 14'd15879)
