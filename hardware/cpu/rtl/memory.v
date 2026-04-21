@@ -14,8 +14,8 @@ module instr_mem (
 	// FPGA ROM initialization
 	// Initialize instruction memory from hex file (simulation / FPGA)
 	initial begin
-//		$readmemh("C:/Image_convulation_project/Image-Convulation-FPGA/hardware/cpu/imem.hex", imem);
-        $readmemh("imem.hex", imem);
+		$readmemh("C:/Image_convulation_project/Image-Convulation-FPGA/hardware/cpu/imem.hex", imem);
+//        $readmemh("imem.hex", imem);
 	end
 
 	// Synchronous instruction fetch
@@ -56,8 +56,8 @@ module data_mem (
 
 
 	initial begin
-//    	$readmemh("C:/Image_convulation_project/Image-Convulation-FPGA/hardware/cpu/dmem.hex", dmem);
-        $readmemh("dmem.hex", dmem);
+    	$readmemh("C:/Image_convulation_project/Image-Convulation-FPGA/hardware/cpu/dmem.hex", dmem);
+//        $readmemh("dmem.hex", dmem);
 	end
 
 
