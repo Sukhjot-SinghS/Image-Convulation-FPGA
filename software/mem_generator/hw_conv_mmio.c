@@ -16,44 +16,65 @@ volatile int8_t gaussian_blur[9] = { 1,  2,  1,
                                      2,  4,  2, 
                                      1,  2,  1};
 
-volatile int dummy_counter;
-
 int main() {
-    // 1. The Un-killable Delay Loop (Wait for Python GUI UART TX)
-    // 50M iterations = ~2-3 seconds grace period at 25MHz for the GUI to send the image!
-    for (int i = 0; i < 50000000; i++) {
-        dummy_counter = i;
-    }
+    // ============================================================
+    // 1. FIXED DELAY — Wait for image to load via UART
+    //    Identical approach to the WORKING sw_gaussian_blur.c
+    //    50,000,000 iterations × ~4 cycles = ~8 seconds at 25 MHz
+    // ============================================================
+    __asm__ volatile (
+        "li t0, 50000000\n\t"
+        "1:\n\t"
+        "addi t0, t0, -1\n\t"
+        "bnez t0, 1b\n\t"
+        ::: "t0"
+    );
 
+    // ============================================================
     // 2. Initialize Hardware Parameters
-    HW_NORM_EN = 1; // Enable division by 16
+    // ============================================================
+    HW_NORM_EN = 1; // Enable normalization (divide by 8)
     
     for (int i = 0; i < 9; i++) {
         HW_KERNEL_BASE[i] = (uint32_t)gaussian_blur[i];
     }
 
-    // ==========================================
+    // ============================================================
     // 3. START TIMER FLAG
-    // ==========================================
+    // ============================================================
     BENCHMARK_FLAG = 0x11111111; 
 
+    // ============================================================
     // 4. Trigger Hardware Accelerator
+    // ============================================================
     HW_CMD_START = 1;
     HW_CMD_START = 0; 
 
-    // 5. Poll Status
-    while (HW_STATUS_DONE == 0) {
-        // CPU yields while Soumik's accelerator crunches the pixels
-    }
+    // ============================================================
+    // 5. FIXED DELAY — Wait for convolution to finish
+    //    The hardware convolution takes ~33,000 clk_slow cycles
+    //    (126 rows × ~260 cycles/row). We wait 5,000,000 iterations
+    //    (~20M clk_slow cycles = ~0.8s) which is massive overkill.
+    // ============================================================
+    __asm__ volatile (
+        "li t0, 5000000\n\t"
+        "1:\n\t"
+        "addi t0, t0, -1\n\t"
+        "bnez t0, 1b\n\t"
+        ::: "t0"
+    );
 
-    // ==========================================
+    // ============================================================
     // 6. STOP TIMER FLAG
-    // ==========================================
+    // ============================================================
     BENCHMARK_FLAG = 0x99999999; 
 
-    // ==========================================
+    // ============================================================
     // 7. START UART TRANSMISSION
-    // ==========================================
+    //    SW_DONE tells top_fsm to go from WAIT_START → TRANSMIT
+    //    (or if the FSM already reached TRANSMIT via DRAIN, this
+    //    is just a harmless 1-cycle pulse that gets ignored)
+    // ============================================================
     SW_DONE_REG = 1;
 
     // Safely halt CPU

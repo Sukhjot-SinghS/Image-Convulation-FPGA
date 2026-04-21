@@ -11,7 +11,6 @@ module conv_datapath #(
     // Handshake with top_fsm
     input  wire        start,
     output wire        done,
-
     // img_bram_in read port
     output wire [13:0] bram_in_rd_addr,
     input  wire [ 7:0] bram_in_rd_data,

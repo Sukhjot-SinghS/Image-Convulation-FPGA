@@ -289,8 +289,10 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
-                else if (sw_done)          // <--- BUG 3 FIX
-                    fsm_state <= TRANSMIT;
+                // sw_done is intentionally NOT handled here:
+                // The CPU fires sw_done only AFTER polling HW_STATUS_DONE=1,
+                // so by then lb_done has already fired and we are in DRAIN/TRANSMIT.
+                // Handling sw_done here would abort a running convolution → black image.
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
@@ -406,7 +408,8 @@ mmio_decoder mmio_inst (
     .kernel_wdata (kernel_wdata),
     .start        (lb_start),
     .sw_done      (sw_done),
-    .done_in      (lb_done)
+    .done_in      (lb_done),
+    .img_ready    ((fsm_state == WAIT_START) || (fsm_state == PROCESSING) || (fsm_state == DRAIN))
 );
-
+// comment diya h yha 
 endmodule

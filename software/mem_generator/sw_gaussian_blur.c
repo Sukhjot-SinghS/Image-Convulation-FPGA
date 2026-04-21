@@ -61,11 +61,15 @@
  {
 
     // 2. The Un-killable Delay Loop!
-    // 'volatile' forces the compiler to keep it.
-    // 100,000,000 iterations = ~15 seconds of pure waiting at 25MHz.
-    for (int i = 0; i < 50000000; i++) {
-        dummy_counter = i;
-    }
+    // 50,000,000 iterations = ~2-3 seconds at 25MHz.
+    // Using inline assembly to prevent GCC from misoptimizing the branch targets!
+    __asm__ volatile (
+        "li t0, 50000000\n\t"
+        "1:\n\t"
+        "addi t0, t0, -1\n\t"
+        "bnez t0, 1b\n\t"
+        ::: "t0"
+    );
     
      /* ── START TIMER ────────────────────────────────────────── */
     BENCHMARK_FLAG = 0x11111111;
