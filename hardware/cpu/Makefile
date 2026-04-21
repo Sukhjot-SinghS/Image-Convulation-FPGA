@@ -9,11 +9,11 @@
 # --- Variables ---
 INC_DIR  = ../rtl
 BFLAGS   = -i $(INC_DIR) -f filelist.txt
-# TOP_MOD  = tb_pipeline
+TOP_MOD  = tb_pipeline
 
-# <-- changed
-TOP_MOD = tb_top_fpga
-# changed -->
+# # <-- changed
+# TOP_MOD = tb_top_fpga
+# # changed -->
 
 SNAPSHOT = riscv_sim
 MEM_GEN  = ../../software/mem_generator
