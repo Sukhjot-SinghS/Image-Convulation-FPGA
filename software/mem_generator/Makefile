@@ -203,6 +203,8 @@ SRC_MMIO = hw_conv_mmio.c
 SRC_MULDIV = mul_div_test.c
 SRC_BLUR = sw_blur.c
 SRC_GAU_BLUR = sw_gaussian_blur.c
+SRC_SOBEL = sw_sobel.c
+SRC_MASTER = sw_master.c
 
 
 # # extra -->
@@ -294,6 +296,30 @@ sw_blur: $(SRC_BLUR) start.S
 
 sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_GAU_BLUR) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
+	cd imem_dmem && python bin2hex.py
+	@echo "NEW STEP: Copy the results to the Hardware directory"
+	cp -f ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
+	cp -f ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	@echo "Hex files synchronized to Hardware directory!"
+
+
+sw_sobel: $(SRC_SOBEL) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
+	cd imem_dmem && python bin2hex.py
+	@echo "NEW STEP: Copy the results to the Hardware directory"
+	cp -f ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
+	cp -f ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	@echo "Hex files synchronized to Hardware directory!"
+
+
+sw_master: $(SRC_MASTER) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_MASTER) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
