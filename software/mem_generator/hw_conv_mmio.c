@@ -16,65 +16,51 @@ volatile int8_t gaussian_blur[9] = { 1,  2,  1,
                                      2,  4,  2, 
                                      1,  2,  1};
 
-int main() {
-    // ============================================================
-    // 1. FIXED DELAY — Wait for image to load via UART
-    //    Identical approach to the WORKING sw_gaussian_blur.c
-    //    50,000,000 iterations × ~4 cycles = ~8 seconds at 25 MHz
-    // ============================================================
-    __asm__ volatile (
-        "li t0, 50000000\n\t"
-        "1:\n\t"
-        "addi t0, t0, -1\n\t"
-        "bnez t0, 1b\n\t"
-        ::: "t0"
-    );
+#define HW_IMG_READY_ADDR ((volatile uint32_t*)0x80000038)
 
-    // ============================================================
+// Helper for 1-cycle latency safe MMIO polling with NOPs to prevent hazard stall bugs
+static inline uint32_t read_mmio(volatile uint32_t *addr) {
+    uint32_t val;
+    __asm__ volatile (
+        "lw zero, 0(%1)\n\t"    // Dummy read
+        "lw %0, 0(%1)\n\t"      // Actual read
+        "nop\n\t"               // Prevent hazard stall on branch eval
+        "nop\n\t"
+        : "=r" (val)
+        : "r" (addr)
+    );
+    return val;
+}
+
+int main() {
+    // 1. PERFECT SYNC: Poll the top_fsm until it says the Image is 100% loaded via UART
+    while (read_mmio(HW_IMG_READY_ADDR) == 0) {
+        // CPU gracefully spins here infinitely until you hit "send" in Python!
+    }
+
     // 2. Initialize Hardware Parameters
-    // ============================================================
     HW_NORM_EN = 1; // Enable normalization (divide by 8)
     
     for (int i = 0; i < 9; i++) {
         HW_KERNEL_BASE[i] = (uint32_t)gaussian_blur[i];
     }
 
-    // ============================================================
     // 3. START TIMER FLAG
-    // ============================================================
     BENCHMARK_FLAG = 0x11111111; 
 
-    // ============================================================
     // 4. Trigger Hardware Accelerator
-    // ============================================================
     HW_CMD_START = 1;
     HW_CMD_START = 0; 
 
-    // ============================================================
-    // 5. FIXED DELAY — Wait for convolution to finish
-    //    The hardware convolution takes ~33,000 clk_slow cycles
-    //    (126 rows × ~260 cycles/row). We wait 5,000,000 iterations
-    //    (~20M clk_slow cycles = ~0.8s) which is massive overkill.
-    // ============================================================
-    __asm__ volatile (
-        "li t0, 5000000\n\t"
-        "1:\n\t"
-        "addi t0, t0, -1\n\t"
-        "bnez t0, 1b\n\t"
-        ::: "t0"
-    );
+    // 5. PERFECT SYNC: Wait exclusively just for the convolution HW to finish
+    while (read_mmio(&HW_STATUS_DONE) == 0) {
+        // Wait purely based on the hardware completing processing
+    }
 
-    // ============================================================
     // 6. STOP TIMER FLAG
-    // ============================================================
     BENCHMARK_FLAG = 0x99999999; 
 
-    // ============================================================
     // 7. START UART TRANSMISSION
-    //    SW_DONE tells top_fsm to go from WAIT_START → TRANSMIT
-    //    (or if the FSM already reached TRANSMIT via DRAIN, this
-    //    is just a harmless 1-cycle pulse that gets ignored)
-    // ============================================================
     SW_DONE_REG = 1;
 
     // Safely halt CPU
