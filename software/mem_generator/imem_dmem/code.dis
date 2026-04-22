@@ -53,8 +53,8 @@ Disassembly of section .text:
   a4:	9999a737          	lui	a4,0x9999a
   a8:	99970713          	addi	a4,a4,-1639 # 99999999 <main+0x9999998d>
   ac:	00e7a023          	sw	a4,0(a5)
-  b0:	013132b7          	lui	t0,0x1313
-  b4:	d0028293          	addi	t0,t0,-768 # 1312d00 <main+0x1312cf4>
+  b0:	0000c2b7          	lui	t0,0xc
+  b4:	35028293          	addi	t0,t0,848 # c350 <main+0xc344>
   b8:	fff28293          	addi	t0,t0,-1
   bc:	fe029ee3          	bnez	t0,b8 <main+0xac>
   c0:	800007b7          	lui	a5,0x80000

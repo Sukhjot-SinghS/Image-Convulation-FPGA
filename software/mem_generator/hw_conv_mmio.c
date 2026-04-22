@@ -56,7 +56,7 @@ int main() {
     // its GUI state seamlessly into blocking serial.read(15880) without the USB
     // driver overflowing its 4KB/8KB buffers from a 100% duty cycle blast.
     __asm__ volatile (
-        "li t0, 20000000\n\t"
+        "li t0, 50000\n\t"
         "1:\n\t"
         "addi t0, t0, -1\n\t"
         "bnez t0, 1b\n\t"
