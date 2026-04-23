@@ -17,6 +17,17 @@ volatile int8_t gaussian_blur[9] = { 1,  2,  1,
 // Your RISC-V pipeline inherently executes 2 instructions AFTER a branch is taken (No branch flush!)
 // If we use C loops, it executes the upcoming initialization code which corrupts the loop's own pointers!
 // This pure-assembly macro forces `nop`s into the delay slots so the processor safely spins!
+
+#ifndef __INTELLISENSE__
+    __asm__ volatile (
+        "li t0, 50000\n\t"
+        "1:\n\t"
+        "addi t0, t0, -1\n\t"
+        "bnez t0, 1b\n\t"
+        ::: "t0"
+    );
+#endif
+
 #define POLL_DOORBELL(addr) \
     __asm__ volatile ( \
         "1:\n\t" \
@@ -55,7 +66,7 @@ int main() {
     // Windows OS PySerial Buffer Fix: Pause CPU so Python can transition
     // its GUI state seamlessly into blocking serial.read(15880) without the USB
     // driver overflowing its 4KB/8KB buffers from a 100% duty cycle blast.
-    __asm__ volatile (
+    __asm__ volatile ( 
         "li t0, 50000\n\t"
         "1:\n\t"
         "addi t0, t0, -1\n\t"
