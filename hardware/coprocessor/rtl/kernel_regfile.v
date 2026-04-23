@@ -22,10 +22,11 @@ module kernel_regfile (
 
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
-        k0 <= 8'sd0; k1 <= 8'sd0; k2 <= 8'sd0;
-        k3 <= 8'sd0; k4 <= 8'sd0; k5 <= 8'sd0;
-        k6 <= 8'sd0; k7 <= 8'sd0; k8 <= 8'sd0;
-        norm_en <= 1'b0;   // default Sobel/Sharpen
+        // Default to Gaussian blur kernel so HW conv works even without CPU init
+        k0 <= 8'sd1; k1 <= 8'sd2; k2 <= 8'sd1;
+        k3 <= 8'sd2; k4 <= 8'sd4; k5 <= 8'sd2;
+        k6 <= 8'sd1; k7 <= 8'sd2; k8 <= 8'sd1;
+        norm_en <= 1'b1;   // default blur normalization ON
     end
     else begin
         if (we) begin

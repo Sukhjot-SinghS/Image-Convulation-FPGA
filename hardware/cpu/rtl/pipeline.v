@@ -297,7 +297,7 @@ execute execute (
 
     .dest_reg_sel      (dest_reg_sel),
     .alu_op            (alu_operation),
-    .dmem_raddr        (write_address[1:0]),//2 bits read strobe 
+    .dmem_raddr        (dmem_read_address[1:0]),//2 bits read strobe — FIXED: was write_address[1:0]!
 
     // -----------------
 	// FROM WB
