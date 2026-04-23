@@ -203,6 +203,7 @@ SRC_MMIO = hw_conv_mmio.c
 SRC_MULDIV = mul_div_test.c
 SRC_BLUR = sw_blur.c
 SRC_GAU_BLUR = sw_gaussian_blur.c
+SRC_SOBEL = sw_sobel.c
 
 
 # # extra -->
@@ -218,7 +219,7 @@ TARGET   = code.elf
 OUT_DIR = ./imem_dmem
 # <-- extra
 
-.PHONY: all clean
+.PHONY: all clean sw_sobel
 
 fib: $(SRC_FIB) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_FIB) -o $(TARGET) $(LDFLAGS)
@@ -227,8 +228,8 @@ fib: $(SRC_FIB) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -239,8 +240,8 @@ addition: $(SRC_ADDITION) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -251,8 +252,8 @@ filter_switch: $(SRC_FSW) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -263,8 +264,8 @@ hw_conv_mmio: $(SRC_MMIO) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -275,8 +276,8 @@ mul_div_test: $(SRC_MULDIV) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -287,8 +288,8 @@ sw_blur: $(SRC_BLUR) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 
@@ -299,8 +300,20 @@ sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
-	cp ./imem_dmem/imem.hex ../../hardware/cpu/imem.hex
-	cp ./imem_dmem/dmem.hex ../../hardware/cpu/dmem.hex
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
+	@echo "Hex files synchronized to Hardware directory!"
+
+
+sw_sobel: $(SRC_SOBEL) start.S
+	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
+	cd imem_dmem && python bin2hex.py
+	@echo "NEW STEP: Copy the results to the Hardware directory"
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
 	@echo "Hex files synchronized to Hardware directory!"
 
 

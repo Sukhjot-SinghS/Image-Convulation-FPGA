@@ -5,55 +5,73 @@
 #define HW_CMD_START    (*(volatile uint32_t*)0x80000024)
 #define HW_STATUS_DONE  (*(volatile uint32_t*)0x80000028)
 #define HW_NORM_EN      (*(volatile uint32_t*)0x80000030)
+#define SW_DONE_REG     (*(volatile uint32_t*)0x80000034)
+#define HW_IMG_READY_ADDR ((volatile uint32_t*)0x80000038)
+#define HW_FILTER_ID    (*(volatile uint32_t*)0x8000003C)
+#define BENCHMARK_FLAG  (*(volatile uint32_t*)0x00000F00)
 
-// Vivado Waveform Stopwatch Trigger
-#define BENCHMARK_FLAG (*(volatile uint32_t*)0x00000F00) 
+static const int8_t KERNELS[5][9] = {
+    { 1,  2,  1,  2,  4,  2,  1,  2,  1},  /* 0: Gaussian   */
+    {-1,  0,  1, -2,  0,  2, -1,  0,  1},  /* 1: Sobel X    */
+    {-1, -2, -1,  0,  0,  0,  1,  2,  1},  /* 2: Sobel Y    */
+    { 0, -1,  0, -1,  5, -1,  0, -1,  0},  /* 3: Sharpen    */
+    {-1, -1, -1, -1,  8, -1, -1, -1, -1},  /* 4: Edge       */
+};
+static const uint8_t NORM_EN_TABLE[5] = {1, 0, 0, 0, 0};
 
-// UART Transmission Trigger (Sukhjot's MMIO Bridge)
-#define SW_DONE_REG    (*(volatile uint32_t*)0x80000034)
-
-volatile int8_t gaussian_blur[9] = { 1,  2,  1, 
-                                     2,  4,  2, 
-                                     1,  2,  1};
-
-volatile int dummy_counter;
+// EXTREME PIPELINE SHIELD POLL MACRO
+// Your RISC-V pipeline inherently executes 2 instructions AFTER a branch is taken (No branch flush!)
+// If we use C loops, it executes the upcoming initialization code which corrupts the loop's own pointers!
+// This pure-assembly macro forces `nop`s into the delay slots so the processor safely spins!
+#define POLL_DOORBELL(addr) \
+    __asm__ volatile ( \
+        "1:\n\t" \
+        "lw zero, 0(%0)\n\t" \
+        "lw t0, 0(%0)\n\t" \
+        "beqz t0, 1b\n\t" \
+        "nop\n\t" \
+        "nop\n\t" \
+        : : "r" (addr) : "t0", "memory" \
+    )
 
 int main() {
-    // 1. The Un-killable Delay Loop (Wait for Python GUI UART TX)
-    // 50M iterations = ~2-3 seconds grace period at 25MHz for the GUI to send the image!
-    for (int i = 0; i < 50000000; i++) {
-        dummy_counter = i;
-    }
+    // 1. PERFECT SYNC: Safely wait for UART load completion
+    POLL_DOORBELL(HW_IMG_READY_ADDR);
 
-    // 2. Initialize Hardware Parameters
-    HW_NORM_EN = 1; // Enable division by 16
-    
+    // 2. Initialize Hardware Parameters — select filter via runtime ID
+    uint32_t fid = HW_FILTER_ID;
+    if (fid > 4) fid = 0;
+    HW_NORM_EN = NORM_EN_TABLE[fid];
+
     for (int i = 0; i < 9; i++) {
-        HW_KERNEL_BASE[i] = (uint32_t)gaussian_blur[i];
+        HW_KERNEL_BASE[i] = (uint32_t)KERNELS[fid][i];
     }
 
-    // ==========================================
     // 3. START TIMER FLAG
-    // ==========================================
     BENCHMARK_FLAG = 0x11111111; 
 
     // 4. Trigger Hardware Accelerator
     HW_CMD_START = 1;
     HW_CMD_START = 0; 
 
-    // 5. Poll Status
-    while (HW_STATUS_DONE == 0) {
-        // CPU yields while Soumik's accelerator crunches the pixels
-    }
+    // 5. PERFECT SYNC: Safely wait for execution completion
+    POLL_DOORBELL(&HW_STATUS_DONE);
 
-    // ==========================================
     // 6. STOP TIMER FLAG
-    // ==========================================
     BENCHMARK_FLAG = 0x99999999; 
 
-    // ==========================================
+    // Windows OS PySerial Buffer Fix: Pause CPU so Python can transition
+    // its GUI state seamlessly into blocking serial.read(15880) without the USB
+    // driver overflowing its 4KB/8KB buffers from a 100% duty cycle blast.
+    __asm__ volatile (
+        "li t0, 50000\n\t"
+        "1:\n\t"
+        "addi t0, t0, -1\n\t"
+        "bnez t0, 1b\n\t"
+        ::: "t0"
+    );
+
     // 7. START UART TRANSMISSION
-    // ==========================================
     SW_DONE_REG = 1;
 
     // Safely halt CPU
