@@ -37,12 +37,13 @@ wire uart_rst = ~reset;   // invert for UART modules
 // ─────────────────────────────────────────────────────────────
 //  FSM States
 // ─────────────────────────────────────────────────────────────
-localparam WAIT_IMAGE  = 3'd0;  // waiting for full image via UART
-localparam WAIT_START  = 3'd1;  // image ready, waiting for CPU start
-localparam PROCESSING  = 3'd2;  // conv running
-localparam TRANSMIT    = 3'd3;  // sending output image back
-localparam IDLE_DONE   = 3'd4;  // finished, back to wait
-localparam DRAIN       = 3'd5;  // 4-cycle pipeline drain
+localparam WAIT_IMAGE     = 3'd0;  // waiting for full image via UART
+localparam WAIT_START     = 3'd1;  // image ready, waiting for CPU start
+localparam PROCESSING     = 3'd2;  // conv running
+localparam TRANSMIT       = 3'd3;  // sending output image back
+localparam IDLE_DONE      = 3'd4;  // finished, back to wait
+localparam DRAIN          = 3'd5;  // 4-cycle pipeline drain
+localparam WAIT_FILTER_ID = 3'd7;  // initial: consume 1 UART byte as filter ID
 
 reg [2:0] fsm_state;
 reg [2:0] drain_count;
@@ -106,7 +107,8 @@ reg         tx_start;
 reg  [7:0]  tx_byte;
 wire        tx_done;
 wire        sw_done;        // Need this wire to catch the doorbell!
-wire [31:0] mmio_rdata;     
+wire [31:0] mmio_rdata;
+reg  [7:0]  filter_id_reg;  // Filter ID captured from first UART byte
 
 // ─────────────────────────────────────────────────────────────
 //  Image load counter
@@ -138,6 +140,16 @@ always @(posedge clk or negedge reset) begin
             end
         end
     end
+end
+
+// ─────────────────────────────────────────────────────────────
+//  Filter ID latch — captures first UART byte as filter selector
+// ─────────────────────────────────────────────────────────────
+always @(posedge clk or negedge reset) begin
+    if (!reset)
+        filter_id_reg <= 8'd0;
+    else if (rx_dv && fsm_state == WAIT_FILTER_ID)
+        filter_id_reg <= rx_byte;
 end
 
 // ─────────────────────────────────────────────────────────────
@@ -229,10 +241,14 @@ end
 // ─────────────────────────────────────────────────────────────
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
-        fsm_state <= WAIT_IMAGE;
+        fsm_state <= WAIT_FILTER_ID;
     end
     else begin
         case (fsm_state)
+            WAIT_FILTER_ID: begin
+                if (rx_dv)
+                    fsm_state <= WAIT_IMAGE;
+            end
             WAIT_IMAGE: begin
                 if (img_load_done)
                     fsm_state <= WAIT_START;
@@ -250,21 +266,23 @@ always @(posedge clk or negedge reset) begin
                     fsm_state <= DRAIN;
                     drain_count <= 3'd0;
                 end
-                else if (sw_done)          // <--- BUG 3 FIX
-                    fsm_state <= TRANSMIT;
             end
             DRAIN: begin
                 if (drain_count == 3'd4)
-                    fsm_state <= TRANSMIT;
+                    fsm_state <= 3'd6; // WAIT_TX_DB
                 else
                     drain_count <= drain_count + 3'd1;
+            end
+            3'd6: begin // WAIT_TX_DB
+                if (sw_done)
+                    fsm_state <= TRANSMIT;
             end
             TRANSMIT: begin
                 if (tx_done && tx_byte_count == 14'd15879)
                     fsm_state <= IDLE_DONE;
             end
             IDLE_DONE: begin
-                fsm_state <= WAIT_IMAGE;
+                fsm_state <= WAIT_FILTER_ID;
             end
             default: fsm_state <= WAIT_IMAGE;
         endcase
@@ -367,7 +385,9 @@ mmio_decoder mmio_inst (
     .kernel_wdata (kernel_wdata),
     .start        (lb_start),
     .sw_done      (sw_done),
-    .done_in      (lb_done)
+    .done_in      (lb_done),
+    .img_ready    ((fsm_state == WAIT_START) || (fsm_state == PROCESSING) || (fsm_state == DRAIN)),
+    .filter_id_in (filter_id_reg)
 );
-
+// comment diya h yha 
 endmodule

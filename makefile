@@ -8,9 +8,9 @@ HW_DIR = hardware/cpu
 SW_DIR = software/mem_generator
 
 # List of all your test programs
-PROGRAMS = fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur
+PROGRAMS = fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur sw_sobel
 
-.PHONY: help clean $(PROGRAMS)
+.PHONY: help clean $(PROGRAMS) sw_sobel
 
 help:
 	@echo "==========================================================="
@@ -26,6 +26,7 @@ help:
 	@echo "   make mul_div_test"
 	@echo "   make sw_blur"
 	@echo "   make sw_gaussian_blur"
+	@echo "   make sw_sobel"
 	@echo ""
 	@echo " Utilities:"
 	@echo "   make clean    - Wipes all compiled files and simulation logs"
