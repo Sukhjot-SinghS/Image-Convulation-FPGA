@@ -10,14 +10,15 @@
 #define HW_FILTER_ID    (*(volatile uint32_t*)0x8000003C)
 #define BENCHMARK_FLAG  (*(volatile uint32_t*)0x00000F00)
 
-static const int8_t KERNELS[5][9] = {
+static const int8_t KERNELS[6][9] = {
     { 1,  2,  1,  2,  4,  2,  1,  2,  1},  /* 0: Gaussian   */
     {-1,  0,  1, -2,  0,  2, -1,  0,  1},  /* 1: Sobel X    */
     {-1, -2, -1,  0,  0,  0,  1,  2,  1},  /* 2: Sobel Y    */
     { 0, -1,  0, -1,  5, -1,  0, -1,  0},  /* 3: Sharpen    */
     {-1, -1, -1, -1,  8, -1, -1, -1, -1},  /* 4: Edge       */
+    { 0,  0,  0,  0,  1,  0,  0,  0,  0},  /* 5: Identity (debug passthrough) */
 };
-static const uint8_t NORM_EN_TABLE[5] = {1, 0, 0, 0, 0};
+static const uint8_t NORM_EN_TABLE[6] = {1, 0, 0, 0, 0, 0};
 
 // EXTREME PIPELINE SHIELD POLL MACRO
 // Your RISC-V pipeline inherently executes 2 instructions AFTER a branch is taken (No branch flush!)
@@ -35,46 +36,43 @@ static const uint8_t NORM_EN_TABLE[5] = {1, 0, 0, 0, 0};
     )
 
 int main() {
-    // 1. PERFECT SYNC: Safely wait for UART load completion
-    POLL_DOORBELL(HW_IMG_READY_ADDR);
+    while(1) {
+        // 1. PERFECT SYNC: Safely wait for UART load completion
+        POLL_DOORBELL(HW_IMG_READY_ADDR);
 
-    // 2. Initialize Hardware Parameters — select filter via runtime ID
-    uint32_t fid = HW_FILTER_ID;
-    if (fid > 4) fid = 0;
-    HW_NORM_EN = NORM_EN_TABLE[fid];
+        // 2. Initialize Hardware Parameters — select filter via runtime ID
+        uint32_t fid = HW_FILTER_ID;
+        if (fid > 5) fid = 0;
+        HW_NORM_EN = NORM_EN_TABLE[fid];
 
-    for (int i = 0; i < 9; i++) {
-        HW_KERNEL_BASE[i] = (uint32_t)KERNELS[fid][i];
+        for (int i = 0; i < 9; i++) {
+            HW_KERNEL_BASE[i] = (uint32_t)KERNELS[fid][i];
+        }
+
+        // 3. START TIMER FLAG
+        BENCHMARK_FLAG = 0x11111111;
+
+        // 4. Trigger Hardware Accelerator
+        HW_CMD_START = 1;
+        HW_CMD_START = 0;
+
+        // 5. PERFECT SYNC: Safely wait for execution completion
+        POLL_DOORBELL(&HW_STATUS_DONE);
+
+        // 6. STOP TIMER FLAG
+        BENCHMARK_FLAG = 0x99999999;
+
+        // 7. START UART TRANSMISSION
+        SW_DONE_REG = 1;
+
+        // Debounce: let the UART controller deassert img_ready before looping
+        __asm__ volatile (
+            "li t0, 5000\n\t"
+            "1:\n\t"
+            "addi t0, t0, -1\n\t"
+            "bnez t0, 1b\n\t"
+            ::: "t0"
+        );
     }
-
-    // 3. START TIMER FLAG
-    BENCHMARK_FLAG = 0x11111111; 
-
-    // 4. Trigger Hardware Accelerator
-    HW_CMD_START = 1;
-    HW_CMD_START = 0; 
-
-    // 5. PERFECT SYNC: Safely wait for execution completion
-    POLL_DOORBELL(&HW_STATUS_DONE);
-
-    // 6. STOP TIMER FLAG
-    BENCHMARK_FLAG = 0x99999999; 
-
-    // Windows OS PySerial Buffer Fix: Pause CPU so Python can transition
-    // its GUI state seamlessly into blocking serial.read(15880) without the USB
-    // driver overflowing its 4KB/8KB buffers from a 100% duty cycle blast.
-    __asm__ volatile (
-        "li t0, 50000\n\t"
-        "1:\n\t"
-        "addi t0, t0, -1\n\t"
-        "bnez t0, 1b\n\t"
-        ::: "t0"
-    );
-
-    // 7. START UART TRANSMISSION
-    SW_DONE_REG = 1;
-
-    // Safely halt CPU
-    while(1) {}
     return 0;
 }

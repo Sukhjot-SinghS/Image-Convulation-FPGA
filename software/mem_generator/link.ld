@@ -3,22 +3,30 @@
 
 MEMORY
 {
-    /* Instruction Memory (mapped via Satish's MMIO logic) */
-    RAM (xrw) : ORIGIN = 0x00000000, LENGTH = 4K
+    /* Harvard split: IMEM and DMEM are physically separate BRAMs,
+       both addressed starting at 0x0 from the CPU's perspective. */
+    IMEM (rx)  : ORIGIN = 0x00000000, LENGTH = 4K
+    DMEM (rw)  : ORIGIN = 0x00004000, LENGTH = 4K
 }
 
 SECTIONS
 {
     .text : {
-        *(.text.startup)  /* <--- THIS IS THE MAGIC LINE. Forces Bootloader to 0x00 */
-        *(.text)          /* Then puts main() and other functions after it */
-    } > RAM
+        *(.text.startup)  /* Forces bootloader / _start to 0x00 in IMEM */
+        *(.text)
+    } > IMEM
 
     .data : {
+        *(.rodata)
+        *(.rodata.*)
+        *(.srodata)
+        *(.srodata.*)
         *(.data)
-    } > RAM
+        *(.sdata)
+        *(.sdata.*)
+    } > DMEM
 
     .bss : {
         *(.bss)
-    } > RAM
+    } > DMEM
 }

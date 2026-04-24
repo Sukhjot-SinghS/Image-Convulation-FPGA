@@ -15,7 +15,28 @@ module top_fpga #(
 );
 
     wire [31:0] pc_out;
-    assign led = pc_out[15:0]; 
+
+    // ========================================================
+    // Phase 1 DEBUG: LED map (see CHANGELOG for decoding)
+    //   led[2:0]  = FSM state (0..7, see top_fsm.v debug block)
+    //   led[3]    = UART RX activity (stretched)
+    //   led[4]    = UART TX activity (stretched)
+    //   led[5]    = IMG_LOADED sticky
+    //   led[6]    = CONV_DONE  sticky
+    //   led[7]    = SW_DOORBELL sticky
+    //   led[15:8] = pc_out[7:0] (CPU heartbeat — should change every cycle)
+    // ========================================================
+    wire [2:0] dbg_fsm_state;
+    wire       dbg_rx_active, dbg_tx_active;
+    wire       dbg_img_loaded, dbg_conv_done, dbg_sw_done;
+
+    assign led[2:0]  = dbg_fsm_state;
+    assign led[3]    = dbg_rx_active;
+    assign led[4]    = dbg_tx_active;
+    assign led[5]    = dbg_img_loaded;
+    assign led[6]    = dbg_conv_done;
+    assign led[7]    = dbg_sw_done;
+    assign led[15:8] = pc_out[7:0];
 
     // MASTER RESET INVERTER
     wire sys_resetn = ~reset; 
@@ -164,7 +185,13 @@ module top_fpga #(
         .cpu_wdata  (mmio_wdata),
         .cpu_rdata  (mmio_rdata),
         .cpu_raddr  (mmio_raddr),
-        .cycle_count(cycle_count_frozen)   // ← benchmark cycle count
+        .cycle_count(cycle_count_frozen),  // ← benchmark cycle count
+        .debug_fsm_state  (dbg_fsm_state),
+        .debug_rx_active  (dbg_rx_active),
+        .debug_tx_active  (dbg_tx_active),
+        .debug_img_loaded (dbg_img_loaded),
+        .debug_conv_done  (dbg_conv_done),
+        .debug_sw_done    (dbg_sw_done)
     );
 
 endmodule

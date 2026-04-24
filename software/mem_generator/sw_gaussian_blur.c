@@ -1,5 +1,5 @@
 /*
- * sw_sobel.c  —  Software Gaussian Blur (3x3, kernel sum=16)
+ * sw_gaussian_blur.c  —  Software Gaussian Blur (3x3, kernel sum=16)
  *
  * Memory map (from top_fsm.v BRAM hijack logic):
  *   Read  pixel from img_bram_in  → load  from 0xC000_0000 + pixel_index

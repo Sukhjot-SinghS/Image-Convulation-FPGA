@@ -11,6 +11,13 @@
 *.elf
 *.rlx
 .Xil/
+xsim.dir/
+
+# Ignore binary/hex artifacts
+*.hex
+*.bin
+*.vvp
+*.out
 
 # Ignore massive build directories
 *.cache/
@@ -18,6 +25,10 @@
 *.ip_user_files/
 *.sim/
 *.runs/
+build/
+dist/
+__pycache__/
+node_modules/
 
 # Keep the Vivado project file, but ignore its auto-generated backups
 *.xpr.backup*

@@ -83,13 +83,17 @@ always @(posedge clk or negedge rst) begin
     end
 end
 
-// CHANGE 2: processed_sum — applies shift for blur, passthrough for sobel/sharpen
-// norm_en = 0 → Sobel / Sharpen → use raw_sum directly
-// norm_en = 1 → Blur            → shift right 3 (divide by 8 ≈ divide by 9)
+// processed_sum — normalize for blur (kernel sum=16 → >>4), passthrough otherwise
+// norm_en = 0 → Sobel / Sharpen / Edge → take |raw_sum| then clamp to [0,255]
+// norm_en = 1 → Gaussian Blur          → divide by 16 (kernel sum = 1+2+1+2+4+2+1+2+1 = 16)
 wire signed [20:0] processed_sum;
-assign processed_sum = norm_en ? (raw_sum >>> 3) : raw_sum;
+assign processed_sum = norm_en ? (raw_sum >>> 4) : raw_sum;
 
-// OUTPUT STAGE — clamp processed_sum to 0-255
+// Absolute magnitude for Sobel / Edge / Sharpen: negate if negative
+wire signed [20:0] abs_sum;
+assign abs_sum = (processed_sum < $signed(21'd0)) ? -processed_sum : processed_sum;
+
+// OUTPUT STAGE — clamp to 0-255
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
         pixel_out     <= 8'd0;
@@ -98,12 +102,21 @@ always @(posedge clk or negedge rst) begin
     end else begin
         out_valid     <= valid_s3;
         pixel_idx_out <= idx_s3;
-        if      (processed_sum < $signed(21'd0))
-            pixel_out <= 8'd0;
-        else if (processed_sum > $signed(21'd255))
-            pixel_out <= 8'd255;
-        else
-            pixel_out <= processed_sum[7:0];
+        if (norm_en) begin
+            // Gaussian Blur: processed_sum is already >>4, just clamp
+            if      (processed_sum < $signed(21'd0))
+                pixel_out <= 8'd0;
+            else if (processed_sum > $signed(21'd255))
+                pixel_out <= 8'd255;
+            else
+                pixel_out <= processed_sum[7:0];
+        end else begin
+            // Sobel / Edge / Sharpen: take absolute value, then ceiling clamp at 255
+            if (abs_sum > $signed(21'd255))
+                pixel_out <= 8'd255;
+            else
+                pixel_out <= abs_sum[7:0];
+        end
     end
 end
 

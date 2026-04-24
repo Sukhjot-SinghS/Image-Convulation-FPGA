@@ -260,7 +260,7 @@ filter_switch: $(SRC_FSW) start.S
 hw_conv_mmio: $(SRC_MMIO) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_MMIO) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
-	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -296,7 +296,7 @@ sw_blur: $(SRC_BLUR) start.S
 sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_GAU_BLUR) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
-	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"
@@ -308,7 +308,7 @@ sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
 sw_sobel: $(SRC_SOBEL) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
-	$(OBJCOPY) -j .data -j .bss -O binary $(TARGET) ./imem_dmem/dmem.bin
+	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
 	cd imem_dmem && python bin2hex.py
 	@echo "NEW STEP: Copy the results to the Hardware directory"

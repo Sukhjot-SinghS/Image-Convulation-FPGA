@@ -105,8 +105,6 @@ always @(posedge clk) begin
                 rdata <= {24'b0, filter_id_in};
             else
                 rdata <= 32'd0;
-        end else begin
-            rdata <= 32'd0;
         end
         
     end
