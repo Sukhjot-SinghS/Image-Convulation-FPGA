@@ -1337,7 +1337,7 @@ class MainDashboard(ctk.CTkFrame):
         self._update_metrics()
         self._running = None
         self._measuring_lbl.configure(text="")
-        self._status_lbl.configure(text="HW run complete.", text_color=T.OK)
+        self._status_lbl.configure(text=f"HW run complete.  Total I/O + Compute: {ms:.1f} ms", text_color=T.OK)
         self._refresh_buttons()
 
     def _on_sw_result(self, out: np.ndarray, ms: float) -> None:
