@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RISC-V FPGA Coprocessor Interface</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080C14; font-family: 'Consolas', 'Courier New', monospace; color: #E8F4FD; overflow: hidden; height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0D1321; }
+  ::-webkit-scrollbar-thumb { background: #1E2D42; border-radius: 3px; }
+  select, input { background: #151F2E; color: #E8F4FD; border: 1px solid #1E2D42; font-family: 'Consolas', monospace; font-size: 11px; padding: 6px 10px; border-radius: 4px; outline: none; }
+  select:focus, input:focus { border-color: #00D4FF44; }
+  select option { background: #111927; }
+
+  /* Animations */
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.15)} }
+  @keyframes scanline { 0%{transform:translateY(-100%)} 100%{transform:translateY(100vh)} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes barFill { from{width:0} to{width:var(--target-w)} }
+  @keyframes glowPulse { 0%,100%{box-shadow:0 0 8px #00D4FF33} 50%{box-shadow:0 0 20px #00D4FF88} }
+  @keyframes countUp { from{opacity:0} to{opacity:1} }
+
+  .stage-enter { animation: fadeIn .4s ease forwards; }
+  .card-enter { animation: slideUp .35s ease forwards; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── THEME ──────────────────────────────────────────────────────────────────
+const T = {
+  BG_DEEP:    '#080C14', BG_PANEL:   '#0D1321', BG_CARD:    '#111927',
+  BG_SURFACE: '#151F2E', BG_BORDER:  '#1E2D42',
+  CYAN:  '#00D4FF', CYAN_DIM: '#004466', CYAN_SEC: '#0090CC',
+  WARN:  '#FFAA00', WARN_DIM: '#3D2800',
+  OK:    '#00E676', OK_DIM:   '#003318',
+  ERR:   '#FF4444', ERR_DIM:  '#3A0A0A',
+  TXT:   '#E8F4FD', TXT2:     '#7A99B8', TXT3: '#3A5068',
+};
+
+// ── FAKE PORTS ─────────────────────────────────────────────────────────────
+const FAKE_PORTS = ['COM3', 'COM7', '/dev/ttyUSB0'];
+const BAUD_RATES = ['9600','19200','38400','57600','115200','230400','460800','921600'];
+const IMG_SIZES  = [
+  { label: '128 × 128', val: 128, tx: 16384,  rx: 15876,  inDim: '128×128', outDim: '126×126' },
+  { label: '512 × 512', val: 512, tx: 262144, rx: 260100, inDim: '512×512', outDim: '510×510' },
+  { label: '1024 × 1024', val: 1024, tx: 1048576, rx: 1044484, inDim: '1024×1024', outDim: '1022×1022' },
+];
+
+// ── SOFTWARE REFERENCE TIMES (simulated ms) ─────────────────────────────────
+const SW_REF_TIMES = { 128: 24.3, 512: 387.6, 1024: 1543.2 };
+const HW_REF_TIMES = { 128: 3.1,  512: 18.4,  1024: 71.6  };
+
+// ── HELPERS ─────────────────────────────────────────────────────────────────
+const ts = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+};
+
+function now_ms() { return performance.now(); }
+
+// draw noise convolution to canvas
+function applyFakeSobel(srcCanvas, dstCanvas, mode='hw') {
+  const s = srcCanvas, d = dstCanvas;
+  const sCtx = s.getContext('2d'), dCtx = d.getContext('2d');
+  const W = s.width, H = s.height;
+  const src = sCtx.getImageData(0,0,W,H).data;
+  const out = dCtx.createImageData(W-2, H-2);
+  for (let y=1; y<H-1; y++) {
+    for (let x=1; x<W-1; x++) {
+      const px = (r,c) => src[((y+r)*W+(x+c))*4];
+      const gx = -px(-1,-1)-2*px(0,-1)-px(1,-1)+px(-1,1)+2*px(0,1)+px(1,1);
+      const gy = -px(-1,-1)-2*px(-1,0)-px(-1,1)+px(1,-1)+2*px(1,0)+px(1,1);
+      let v = Math.min(255, Math.sqrt(gx*gx+gy*gy));
+      if (mode==='sw') v = Math.min(255, v * 0.98 + Math.random()*2); // slight diff
+      const i = ((y-1)*(W-2)+(x-1))*4;
+      out.data[i]=out.data[i+1]=out.data[i+2]=v; out.data[i+3]=255;
+    }
+  }
+  d.width = W-2; d.height = H-2;
+  dCtx.putImageData(out, 0, 0);
+}
+
+// ── COMPONENTS ──────────────────────────────────────────────────────────────
+
+function Dot({ on }) {
+  return (
+    <span style={{
+      display:'inline-block', width:8, height:8, borderRadius:'50%',
+      background: on ? T.OK : T.ERR,
+      boxShadow: on ? `0 0 8px ${T.OK}88` : `0 0 6px ${T.ERR}66`,
+      animation: on ? 'pulse 2s infinite' : 'none',
+      flexShrink:0,
+    }}/>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:6, margin:'14px 0 6px' }}>
+      <div style={{ width:2, height:11, background:T.CYAN, flexShrink:0 }}/>
+      <span style={{ fontSize:9, fontWeight:'bold', color:T.CYAN, letterSpacing:'0.08em' }}>{children}</span>
+    </div>
+  );
+}
+
+function Btn({ children, onClick, disabled, variant='primary', small, full, style: sx={} }) {
+  const variants = {
+    primary: { bg: T.CYAN_DIM, hov: T.CYAN_SEC, col: T.CYAN, border: T.CYAN },
+    danger:  { bg: T.ERR_DIM,  hov:'#5A1010',   col: T.ERR,  border: T.ERR  },
+    ghost:   { bg: T.BG_SURFACE, hov: T.BG_CARD, col: T.TXT2, border: T.BG_BORDER },
+    ok:      { bg: T.OK_DIM,   hov:'#005520',    col: T.OK,   border: T.OK   },
+    warn:    { bg: T.WARN_DIM, hov:'#5A3800',    col: T.WARN, border: T.WARN },
+  };
+  const v = variants[variant] || variants.primary;
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick} disabled={disabled}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{
+        background: disabled ? T.BG_SURFACE : (hov ? v.hov : v.bg),
+        color: disabled ? T.TXT3 : v.col,
+        border: `1px solid ${disabled ? T.BG_BORDER : v.border}`,
+        borderRadius: 6, cursor: disabled ? 'not-allowed' : 'pointer',
+        fontFamily:'Consolas,monospace', fontWeight:'bold',
+        fontSize: small ? 10 : 11,
+        padding: small ? '5px 10px' : (full ? '10px 16px' : '8px 16px'),
+        width: full ? '100%' : 'auto',
+        whiteSpace:'nowrap', letterSpacing:'0.05em',
+        transition: 'background .15s, color .15s, box-shadow .15s',
+        boxShadow: (!disabled && hov) ? `0 0 12px ${v.border}44` : 'none',
+        ...sx
+      }}
+    >{children}</button>
+  );
+}
+
+function ProgressBar({ pct, label }) {
+  const mid = 50;
+  return (
+    <div>
+      <div style={{ height:8, background:T.BG_BORDER, borderRadius:4, overflow:'hidden', position:'relative' }}>
+        {pct > 0 && pct <= 50 && (
+          <div style={{ position:'absolute', left:0, top:0, height:'100%', width:`${pct}%`, background:T.CYAN, borderRadius:4, transition:'width .1s' }}/>
+        )}
+        {pct > 50 && (
+          <>
+            <div style={{ position:'absolute', left:0, top:0, height:'100%', width:'50%', background:T.CYAN }}/>
+            <div style={{ position:'absolute', left:'50%', top:0, height:'100%', width:`${pct-50}%`, background:T.WARN, transition:'width .1s' }}/>
+          </>
+        )}
+        <div style={{ position:'absolute', left:'50%', top:0, height:'100%', width:2, background:T.BG_DEEP }}/>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:3 }}>
+        <span style={{ color:T.CYAN, fontSize:9 }}>TX ──</span>
+        <span style={{ color:T.TXT, fontSize:11, fontWeight:'bold' }}>{Math.round(pct)} %</span>
+        <span style={{ color:T.WARN, fontSize:9 }}>── RX</span>
+        {label && <span style={{ color:T.TXT2, fontSize:9, marginLeft:'auto' }}>{label}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ImageCanvas({ title, badge, canvasRef, placeholder=true, size=280 }) {
+  return (
+    <div style={{ flex:1, background:T.BG_CARD, border:`1px solid ${T.BG_BORDER}`, borderRadius:8, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+      <div style={{ background:T.BG_SURFACE, padding:'6px 10px', display:'flex', alignItems:'center', gap:0, borderBottom:`1px solid ${T.BG_BORDER}` }}>
+        <div style={{ width:3, height:'100%', minHeight:20, background:T.CYAN, marginRight:8, borderRadius:1 }}/>
+        <span style={{ fontSize:9, color:T.TXT2, fontWeight:'bold', flex:1, letterSpacing:'0.05em' }}>{title}</span>
+        <span style={{ fontSize:9, color: badge&&badge!=='NO DATA' ? T.CYAN : T.TXT3, background: badge&&badge!=='NO DATA' ? T.CYAN_DIM : T.BG_PANEL, padding:'2px 6px', borderRadius:3 }}>{badge||'NO DATA'}</span>
+      </div>
+      <div style={{ flex:1, background:T.BG_DEEP, display:'flex', alignItems:'center', justifyContent:'center', padding:8, minHeight:size }}>
+        {placeholder && !canvasRef?.current?.width ? (
+          <PlaceholderGrid size={size}/>
+        ) : null}
+        <canvas ref={canvasRef} style={{ maxWidth:'100%', maxHeight:size, imageRendering:'pixelated', display:'block' }}/>
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderGrid({ size=280 }) {
+  return (
+    <svg width={size} height={size} style={{ position:'absolute', opacity:.5 }}>
+      {Array.from({length:10},(_,i)=>(
+        <g key={i}>
+          <line x1={i*(size/9)} y1={0} x2={i*(size/9)} y2={size} stroke={T.BG_BORDER} strokeWidth={1}/>
+          <line x1={0} y1={i*(size/9)} x2={size} y2={i*(size/9)} stroke={T.BG_BORDER} strokeWidth={1}/>
+        </g>
+      ))}
+      <line x1={size/2-16} y1={size/2} x2={size/2+16} y2={size/2} stroke={T.TXT3} strokeWidth={1}/>
+      <line x1={size/2} y1={size/2-16} x2={size/2} y2={size/2+16} stroke={T.TXT3} strokeWidth={1}/>
+      <circle cx={size/2} cy={size/2} r={4} stroke={T.TXT3} strokeWidth={1} fill="none"/>
+      <text x={size/2} y={size/2+28} textAnchor="middle" fill={T.TXT3} fontSize={9} fontFamily="Consolas">NO IMAGE LOADED</text>
+    </svg>
+  );
+}
+
+function ConsoleLog({ entries, logRef }) {
+  const colors = { INFO:T.TXT2, OK:T.OK, WARN:T.WARN, ERR:T.ERR, TX:T.CYAN, RX:'#FF8C00' };
+  return (
+    <div style={{ background:T.BG_CARD, border:`1px solid ${T.BG_BORDER}`, borderRadius:8, overflow:'hidden' }}>
+      <div style={{ background:T.BG_SURFACE, padding:'5px 10px', display:'flex', alignItems:'center', borderBottom:`1px solid ${T.BG_BORDER}` }}>
+        <div style={{ width:3, height:20, background:T.WARN, marginRight:8, borderRadius:1 }}/>
+        <span style={{ fontSize:9, color:T.TXT2, fontWeight:'bold', letterSpacing:'0.06em' }}>SYSTEM LOG  /  UART MONITOR</span>
+      </div>
+      <div ref={logRef} style={{ height:110, overflowY:'auto', padding:'6px 10px', fontFamily:'Courier New,monospace', fontSize:10 }}>
+        {entries.map((e,i)=>(
+          <div key={i} style={{ marginBottom:2, lineHeight:'1.5' }}>
+            <span style={{ color:T.TXT3 }}>[{e.ts}]</span>
+            {' '}
+            <span style={{ color: colors[e.level]||T.TXT2 }}>[{e.level.padEnd(4)}]</span>
+            {' '}
+            <span style={{ color: colors[e.level]||T.TXT2 }}>{e.msg}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimingPanel({ hwTime, swTime, hwCycles, swCycles, size, running }) {
+  const speedup = swTime && hwTime ? (swTime / hwTime).toFixed(1) : null;
+  const cycleSpeedup = swCycles && hwCycles ? (swCycles/hwCycles).toFixed(1) : null;
+  return (
+    <div style={{ background:T.BG_CARD, border:`1px solid ${T.BG_BORDER}`, borderRadius:8, overflow:'hidden' }}>
+      <div style={{ background:T.BG_SURFACE, padding:'6px 10px', display:'flex', alignItems:'center', borderBottom:`1px solid ${T.BG_BORDER}` }}>
+        <div style={{ width:3, height:20, background:'#AA44FF', marginRight:8, borderRadius:1 }}/>
+        <span style={{ fontSize:9, color:T.TXT2, fontWeight:'bold', letterSpacing:'0.06em' }}>PERFORMANCE  ·  CYCLES  /  TIME</span>
+        {running && <span style={{ marginLeft:'auto', fontSize:9, color:'#AA44FF', animation:'blink 1s infinite' }}>● MEASURING</span>}
+      </div>
+      <div style={{ padding:'10px 14px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+          <MetricBox label="SOFTWARE TIME" value={swTime ? `${swTime.toFixed(1)} ms` : '—'} sub={swCycles ? `${(swCycles/1000).toFixed(0)}K cycles` : ''} color={T.WARN}/>
+          <MetricBox label="HARDWARE TIME" value={hwTime ? `${hwTime.toFixed(1)} ms` : '—'} sub={hwCycles ? `${(hwCycles/1000).toFixed(0)}K cycles` : ''} color={T.CYAN}/>
+          <MetricBox label="SPEEDUP" value={speedup ? `${speedup}×` : '—'} sub={cycleSpeedup ? `${cycleSpeedup}× cycles` : ''} color={T.OK} highlight/>
+        </div>
+        {hwTime && swTime && (
+          <div style={{ marginTop:10 }}>
+            <div style={{ fontSize:9, color:T.TXT3, marginBottom:4 }}>RELATIVE PERFORMANCE  ({size}×{size} Sobel 3×3)</div>
+            <div style={{ marginBottom:4 }}>
+              <div style={{ fontSize:9, color:T.WARN, marginBottom:2 }}>SW  {swTime.toFixed(1)} ms</div>
+              <div style={{ height:6, background:T.BG_BORDER, borderRadius:3 }}>
+                <div style={{ height:'100%', width:'100%', background:T.WARN, borderRadius:3 }}/>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:T.CYAN, marginBottom:2 }}>HW  {hwTime.toFixed(1)} ms</div>
+              <div style={{ height:6, background:T.BG_BORDER, borderRadius:3 }}>
+                <div style={{ height:'100%', width:`${(hwTime/swTime)*100}%`, background:T.CYAN, borderRadius:3, transition:'width .6s ease' }}/>
+              </div>
+            </div>
+          </div>
+        )}
+        {!hwTime && !swTime && (
+          <div style={{ textAlign:'center', padding:'12px 0', color:T.TXT3, fontSize:10 }}>Run HW and SW to compare performance</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetricBox({ label, value, sub, color, highlight }) {
+  return (
+    <div style={{
+      background: highlight && value !== '—' ? `${color}11` : T.BG_SURFACE,
+      border: `1px solid ${highlight && value !== '—' ? color+'44' : T.BG_BORDER}`,
+      borderRadius:6, padding:'8px 10px',
+      boxShadow: highlight && value !== '—' ? `0 0 12px ${color}22` : 'none',
+    }}>
+      <div style={{ fontSize:8, color:T.TXT3, letterSpacing:'0.06em', marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize:16, fontWeight:'bold', color: value==='—' ? T.TXT3 : color, letterSpacing:'-0.02em' }}>{value}</div>
+      {sub && <div style={{ fontSize:8, color:T.TXT3, marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ── STAGE 1 — CONNECTION SCREEN ─────────────────────────────────────────────
+function ConnectionStage({ onConnect }) {
+  const [port, setPort] = useState(FAKE_PORTS[0]);
+  const [baud, setBaud] = useState('115200');
+  const [connecting, setConnecting] = useState(false);
+  const [err, setErr] = useState('');
+  const [dots, setDots] = useState('');
+
+  useEffect(()=>{
+    if (!connecting) return;
+    let n=0;
+    const id = setInterval(()=>{ setDots('.'.repeat(++n%4)); },300);
+    return ()=>clearInterval(id);
+  },[connecting]);
+
+  const handleConnect = () => {
+    if (!port) { setErr('Select a valid COM port'); return; }
+    setErr(''); setConnecting(true);
+    setTimeout(()=>{ setConnecting(false); onConnect({ port, baud }); }, 1600);
+  };
+
+  return (
+    <div className="stage-enter" style={{
+      height:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      background:`radial-gradient(ellipse at 50% 40%, #0D1E35 0%, ${T.BG_DEEP} 70%)`,
+      position:'relative', overflow:'hidden',
+    }}>
+      {/* scanline effect */}
+      <div style={{ position:'absolute', inset:0, backgroundImage:`repeating-linear-gradient(0deg, transparent, transparent 3px, #00000022 3px, #00000022 4px)`, pointerEvents:'none' }}/>
+      {/* corner accents */}
+      {[['top','left'],['top','right'],['bottom','left'],['bottom','right']].map(([v,h],i)=>(
+        <div key={i} style={{ position:'absolute', [v]:24, [h]:24, width:24, height:24,
+          borderTop: v==='top'?`2px solid ${T.CYAN_DIM}`:'none',
+          borderBottom: v==='bottom'?`2px solid ${T.CYAN_DIM}`:'none',
+          borderLeft: h==='left'?`2px solid ${T.CYAN_DIM}`:'none',
+          borderRight: h==='right'?`2px solid ${T.CYAN_DIM}`:'none',
+        }}/>
+      ))}
+
+      {/* header */}
+      <div style={{ textAlign:'center', marginBottom:48 }}>
+        <div style={{ fontSize:10, color:T.CYAN, letterSpacing:'0.3em', marginBottom:8 }}>⬡  RISC-V IMAGE CONVOLUTION  ·  FPGA COPROCESSOR INTERFACE</div>
+        <div style={{ fontSize:28, fontWeight:'bold', color:T.TXT, letterSpacing:'-0.02em' }}>UART CONNECTION SETUP</div>
+        <div style={{ fontSize:11, color:T.TXT3, marginTop:6 }}>Establish hardware link before loading images</div>
+      </div>
+
+      {/* card */}
+      <div className="card-enter" style={{
+        background:T.BG_PANEL, border:`1px solid ${T.BG_BORDER}`, borderRadius:12,
+        padding:'32px 40px', width:420, boxShadow:`0 0 40px #00000088`,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:24, paddingBottom:16, borderBottom:`1px solid ${T.BG_BORDER}` }}>
+          <Dot on={false}/>
+          <span style={{ fontSize:10, color:T.ERR }}>NO HARDWARE DETECTED</span>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ fontSize:9, color:T.TXT2, display:'block', marginBottom:5, letterSpacing:'0.06em' }}>COM PORT</label>
+          <div style={{ display:'flex', gap:8 }}>
+            <select value={port} onChange={e=>setPort(e.target.value)} style={{ flex:1, fontSize:11 }}>
+              {FAKE_PORTS.map(p=><option key={p}>{p}</option>)}
+            </select>
+            <button onClick={()=>{}} style={{ background:T.BG_SURFACE, border:`1px solid ${T.BG_BORDER}`, color:T.CYAN, borderRadius:4, padding:'6px 10px', cursor:'pointer', fontSize:13 }}>⟳</button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:24 }}>
+          <label style={{ fontSize:9, color:T.TXT2, display:'block', marginBottom:5, letterSpacing:'0.06em' }}>BAUD RATE</label>
+          <select value={baud} onChange={e=>setBaud(e.target.value)} style={{ width:'100%', fontSize:11 }}>
+            {BAUD_RATES.map(b=><option key={b}>{b}</option>)}
+          </select>
+        </div>
+
+        {err && <div style={{ fontSize:10, color:T.ERR, marginBottom:12 }}>⚠ {err}</div>}
+
+        <Btn onClick={handleConnect} disabled={connecting} variant="primary" full style={{ fontSize:12, padding:'12px 0', letterSpacing:'0.1em' }}>
+          {connecting ? `▶  CONNECTING${dots}` : '▶  CONNECT'}
+        </Btn>
+
+        <div style={{ textAlign:'center', marginTop:12 }}>
+          <span style={{ fontSize:9, color:T.TXT3, cursor:'pointer', textDecoration:'underline' }}
+            onClick={()=>onConnect({ port:'SIM', baud:'115200', simMode:true })}>
+            Skip — run in simulation mode
+          </span>
+        </div>
+      </div>
+
+      <div style={{ position:'absolute', bottom:20, fontSize:9, color:T.TXT3 }}>build 2025.06  |  UART 8N1  |  RISC-V RV32IM</div>
+    </div>
+  );
+}
+
+// ── STAGE 2 — MAIN DASHBOARD ────────────────────────────────────────────────
+function Dashboard({ conn, onDisconnect }) {
+  const [imgSize, setImgSize] = useState(IMG_SIZES[0]);
+  const [imgFile, setImgFile] = useState(null);
+  const [imgName, setImgName] = useState('');
+  const [hasImg, setHasImg] = useState(false);
+  const [runningHW, setRunningHW] = useState(false);
+  const [runningSW, setRunningSW] = useState(false);
+  const [hwDone, setHwDone] = useState(false);
+  const [swDone, setSwDone] = useState(false);
+  const [pctHW, setPctHW] = useState(0);
+  const [pctSW, setPctSW] = useState(0);
+  const [log, setLog] = useState([
+    { ts:ts(), level:'INFO', msg:'System initialised. Hardware connected.' },
+    { ts:ts(), level:'OK',   msg:`Connected to ${conn.port} @ ${conn.baud} baud  ✓` },
+  ]);
+  const [hwTime, setHwTime] = useState(null);
+  const [swTime, setSwTime] = useState(null);
+  const [hwCycles, setHwCycles] = useState(null);
+  const [swCycles, setSwCycles] = useState(null);
+
+  const logRef = useRef();
+  const origRef = useRef();
+  const hwRef = useRef();
+  const swRef = useRef();
+  const origCanvasRef = useRef(); // hidden full-res canvas
+  const fileInputRef = useRef();
+
+  const addLog = useCallback((level, msg)=>{
+    setLog(l=>[...l, { ts:ts(), level, msg }]);
+    setTimeout(()=>{ if(logRef.current) logRef.current.scrollTop = 9999; },50);
+  },[]);
+
+  const sizeInfo = imgSize;
+
+  // load image into origRef canvas
+  const handleFile = (file) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const c = origRef.current;
+      c.width = imgSize.val; c.height = imgSize.val;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, imgSize.val, imgSize.val);
+      // grayscale
+      const d = ctx.getImageData(0,0,imgSize.val,imgSize.val);
+      for (let i=0;i<d.data.length;i+=4){
+        const g = d.data[i]*.299 + d.data[i+1]*.587 + d.data[i+2]*.114;
+        d.data[i]=d.data[i+1]=d.data[i+2]=g;
+      }
+      ctx.putImageData(d,0,0);
+      setHasImg(true); setImgName(file.name);
+      addLog('INFO', `Image loaded: '${file.name}' → resized to ${imgSize.val}×${imgSize.val} grayscale`);
+      addLog('INFO', `Payload ready: ${sizeInfo.tx.toLocaleString()} bytes (${(sizeInfo.tx/1024).toFixed(0)} KiB)`);
+      // clear outputs
+      if(hwRef.current){ hwRef.current.width=0; hwRef.current.height=0; }
+      if(swRef.current){ swRef.current.width=0; swRef.current.height=0; }
+      setHwDone(false); setSwDone(false); setHwTime(null); setSwTime(null);
+    };
+    img.src = url;
+  };
+
+  const reset = () => {
+    setHasImg(false); setImgName(''); setImgFile(null);
+    setHwDone(false); setSwDone(false); setPctHW(0); setPctSW(0);
+    setHwTime(null); setSwTime(null); setHwCycles(null); setSwCycles(null);
+    setRunningHW(false); setRunningSW(false);
+    if(origRef.current){ origRef.current.width=0; origRef.current.height=0; }
+    if(hwRef.current){ hwRef.current.width=0; hwRef.current.height=0; }
+    if(swRef.current){ swRef.current.width=0; swRef.current.height=0; }
+    if(fileInputRef.current) fileInputRef.current.value='';
+    addLog('WARN', 'Session reset. All data cleared.');
+  };
+
+  const runHW = () => {
+    if(!hasImg||runningHW) return;
+    setRunningHW(true); setPctHW(0); setHwDone(false);
+    addLog('TX', `Transmitting ${sizeInfo.tx.toLocaleString()} bytes → FPGA (${conn.port})…`);
+    const t0 = now_ms();
+    const dur = HW_REF_TIMES[imgSize.val] * 1000; // ms total sim
+    const txDur = dur * 0.45, rxDur = dur * 0.55;
+
+    // TX phase
+    let elapsed=0, step=50;
+    const txId = setInterval(()=>{
+      elapsed+=step;
+      setPctHW(Math.min(50, (elapsed/txDur)*50));
+      if(elapsed>=txDur){
+        clearInterval(txId);
+        addLog('TX', `TX complete — ${sizeInfo.tx.toLocaleString()} bytes sent`);
+        addLog('RX', `Awaiting ${sizeInfo.rx.toLocaleString()} bytes ← FPGA…`);
+        // RX phase
+        let rxE=0;
+        const rxId = setInterval(()=>{
+          rxE+=step;
+          setPctHW(Math.min(100, 50+(rxE/rxDur)*50));
+          if(rxE>=rxDur){
+            clearInterval(rxId);
+            const elapsed_ms = now_ms()-t0;
+            const hw_t = HW_REF_TIMES[imgSize.val] + (Math.random()-.5)*0.4;
+            setHwTime(hw_t);
+            setHwCycles(Math.round(hw_t * 100000)); // fake cycles at 100MHz
+            addLog('RX', `RX complete — ${sizeInfo.rx.toLocaleString()} bytes received`);
+            addLog('OK', `Hardware convolution complete ✓  (${hw_t.toFixed(2)} ms)`);
+            // apply sobel to origRef → hwRef
+            applyFakeSobel(origRef.current, hwRef.current, 'hw');
+            setHwDone(true); setRunningHW(false);
+          }
+        }, step);
+      }
+    }, step);
+  };
+
+  const runSW = () => {
+    if(!hasImg||runningSW) return;
+    setRunningSW(true); setPctSW(0); setSwDone(false);
+    addLog('INFO', `Running software convolution (CPU) for ${imgSize.val}×${imgSize.val}…`);
+    const dur = SW_REF_TIMES[imgSize.val] * 1000;
+    const t0 = now_ms();
+    let elapsed=0, step=50;
+    const id = setInterval(()=>{
+      elapsed+=step;
+      setPctSW(Math.min(100,(elapsed/dur)*100));
+      if(elapsed>=dur){
+        clearInterval(id);
+        const sw_t = SW_REF_TIMES[imgSize.val] + (Math.random()-.5)*2;
+        setSwTime(sw_t);
+        setSwCycles(Math.round(sw_t * 400000)); // fake cycles at 400MHz CPU
+        addLog('OK', `Software convolution complete ✓  (${sw_t.toFixed(2)} ms)`);
+        applyFakeSobel(origRef.current, swRef.current, 'sw');
+        setSwDone(true); setRunningSW(false);
+      }
+    }, step);
+  };
+
+  const saveImage = (canvasRef, label) => {
+    const c = canvasRef.current;
+    if (!c || !c.width) return;
+    const a = document.createElement('a');
+    a.href = c.toDataURL('image/png');
+    a.download = `${label}_${imgSize.val}x${imgSize.val}_output.png`;
+    a.click();
+    addLog('OK', `Saved ${label} output as PNG`);
+  };
+
+  const outDim = `${imgSize.val-2}×${imgSize.val-2}`;
+
+  return (
+    <div className="stage-enter" style={{ height:'100vh', display:'flex', flexDirection:'column', background:T.BG_DEEP, overflow:'hidden' }}>
+      {/* TITLE BAR */}
+      <div style={{ background:T.BG_PANEL, borderBottom:`1px solid ${T.CYAN_DIM}`, display:'flex', alignItems:'center', height:44, flexShrink:0 }}>
+        <div style={{ width:4, height:'100%', background:T.CYAN }}/>
+        <span style={{ fontSize:11, color:T.CYAN, fontWeight:'bold', paddingLeft:14, letterSpacing:'0.05em' }}>⬡  RISC-V IMAGE CONVOLUTION  ·  FPGA COPROCESSOR INTERFACE</span>
+        <span style={{ marginLeft:'auto', fontSize:9, color:T.TXT3, paddingRight:16 }}>build 2025.06  |  UART 8N1  |  {conn.port}  @  {conn.baud}</span>
+      </div>
+
+      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+        {/* SIDEBAR */}
+        <div style={{ width:240, background:T.BG_PANEL, borderRight:`1px solid ${T.BG_BORDER}`, flexShrink:0, overflowY:'auto', padding:'12px 14px' }}>
+
+          <SectionLabel>UART STATUS</SectionLabel>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+            <Dot on={!conn.simMode}/>
+            <span style={{ fontSize:10, color: conn.simMode ? T.WARN : T.OK }}>
+              {conn.simMode ? 'SIMULATION MODE' : `${conn.port}  CONNECTED`}
+            </span>
+          </div>
+          <Btn onClick={onDisconnect} variant="danger" full small style={{ marginBottom:2 }}>⏻  DISCONNECT</Btn>
+
+          <SectionLabel>IMAGE SIZE</SectionLabel>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {IMG_SIZES.map(s=>(
+              <div key={s.val} onClick={()=>{ if(!runningHW&&!runningSW){ setImgSize(s); reset(); } }}
+                style={{
+                  padding:'7px 10px', borderRadius:5, cursor:'pointer', border:`1px solid`,
+                  borderColor: imgSize.val===s.val ? T.CYAN : T.BG_BORDER,
+                  background: imgSize.val===s.val ? T.CYAN_DIM : T.BG_SURFACE,
+                  color: imgSize.val===s.val ? T.CYAN : T.TXT2,
+                  fontSize:11, fontWeight: imgSize.val===s.val ? 'bold' : 'normal',
+                  display:'flex', justifyContent:'space-between', alignItems:'center',
+                  transition:'all .15s',
+                }}>
+                <span>{s.label}</span>
+                {imgSize.val===s.val && <span style={{ fontSize:8 }}>▶</span>}
+              </div>
+            ))}
+          </div>
+
+          <SectionLabel>IMAGE INPUT</SectionLabel>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleFile(e.target.files[0])}/>
+          <Btn onClick={()=>fileInputRef.current.click()} variant="ghost" full small style={{ marginBottom:4 }}>📂  SELECT IMAGE</Btn>
+          <div style={{ fontSize:9, color: hasImg ? T.TXT2 : T.TXT3, marginTop:4, wordBreak:'break-all' }}>
+            {hasImg ? `${imgName}\n→ ${imgSize.val}×${imgSize.val} grayscale` : 'No file selected'}
+          </div>
+
+          <SectionLabel>HARDWARE TARGET</SectionLabel>
+          {[
+            ['Architecture', 'RISC-V  RV32IM'],
+            ['Kernel', '3×3  Sobel'],
+            ['Input', `${sizeInfo.inDim} ×1`],
+            ['Output', `${outDim} ×1`],
+            ['Precision', 'UINT8 / Fixed'],
+          ].map(([k,v])=>(
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+              <span style={{ fontSize:9, color:T.TXT3 }}>{k}</span>
+              <span style={{ fontSize:9, color:T.CYAN }}>{v}</span>
+            </div>
+          ))}
+
+          <div style={{ flex:1, marginTop:'auto', paddingTop:20, borderTop:`1px solid ${T.BG_BORDER}`, marginTop:20 }}>
+            <div style={{ fontSize:8, color:T.TXT3, lineHeight:'1.6' }}>
+              FPGA Coprocessor Interface  v1.0<br/>© 2025 Engineering Group 18
+            </div>
+          </div>
+        </div>
+
+        {/* MAIN CONTENT */}
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+          {/* IMAGE PANELS */}
+          <div style={{ flex:1, display:'flex', gap:10, padding:'12px 12px 8px', overflow:'hidden' }}>
+            {/* ORIGINAL */}
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:6 }}>
+              <ImageCanvas
+                title={`ORIGINAL IMAGE  ·  ${sizeInfo.inDim}  GRAYSCALE`}
+                badge={hasImg ? `${imgSize.val}×${imgSize.val} · L` : 'NO DATA'}
+                canvasRef={origRef}
+              />
+            </div>
+
+            {/* Arrow + SW */}
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+              <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4 }}>
+                <span style={{ fontSize:9, color:T.WARN, fontWeight:'bold', writingMode:'vertical-lr', transform:'rotate(180deg)', letterSpacing:'0.1em' }}>SOFTWARE</span>
+                <span style={{ color:T.TXT3, fontSize:16 }}>→</span>
+              </div>
+            </div>
+
+            {/* SW OUTPUT */}
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:6 }}>
+              <ImageCanvas
+                title={`SOFTWARE OUTPUT  ·  ${outDim}  CONVOLVED`}
+                badge={swDone ? `${outDim} · CPU` : (runningSW ? 'RUNNING…' : 'NO DATA')}
+                canvasRef={swRef}
+              />
+            </div>
+
+            {/* Arrow + HW */}
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+              <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4 }}>
+                <span style={{ fontSize:9, color:T.CYAN, fontWeight:'bold', writingMode:'vertical-lr', transform:'rotate(180deg)', letterSpacing:'0.1em' }}>HARDWARE</span>
+                <span style={{ color:T.TXT3, fontSize:16 }}>→</span>
+              </div>
+            </div>
+
+            {/* HW OUTPUT */}
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:6 }}>
+              <ImageCanvas
+                title={`HARDWARE OUTPUT  ·  ${outDim}  CONVOLVED`}
+                badge={hwDone ? `${outDim} · FPGA` : (runningHW ? 'RUNNING…' : 'NO DATA')}
+                canvasRef={hwRef}
+              />
+            </div>
+          </div>
+
+          {/* TIMING PANEL */}
+          <div style={{ padding:'0 12px 8px' }}>
+            <TimingPanel hwTime={hwTime} swTime={swTime} hwCycles={hwCycles} swCycles={swCycles} size={imgSize.val} running={runningHW||runningSW}/>
+          </div>
+
+          {/* CONTROL BAR */}
+          <div style={{ background:T.BG_PANEL, borderTop:`1px solid ${T.BG_BORDER}`, padding:'10px 12px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              {/* RUN HW */}
+              <Btn onClick={runHW} disabled={!hasImg||runningHW||runningSW} variant="primary" style={{ minWidth:130, fontSize:12, padding:'9px 18px' }}>
+                {runningHW ? '⟳  RUNNING HW…' : '▶  RUN  HW'}
+              </Btn>
+
+              {/* RUN SW */}
+              <Btn onClick={runSW} disabled={!hasImg||runningHW||runningSW} variant="warn" style={{ minWidth:130, fontSize:12, padding:'9px 18px' }}>
+                {runningSW ? '⟳  RUNNING SW…' : '▶  RUN  SW'}
+              </Btn>
+
+              {/* RESET */}
+              <Btn onClick={reset} disabled={runningHW||runningSW} variant="danger" style={{ fontSize:12, padding:'9px 16px' }}>
+                ↺  RESET
+              </Btn>
+
+              {/* SAVE HW */}
+              <Btn onClick={()=>saveImage(hwRef,'hw')} disabled={!hwDone} variant="ok" small style={{ fontSize:10 }}>
+                💾  SAVE HW
+              </Btn>
+
+              {/* SAVE SW */}
+              <Btn onClick={()=>saveImage(swRef,'sw')} disabled={!swDone} variant="ghost" small style={{ fontSize:10 }}>
+                💾  SAVE SW
+              </Btn>
+
+              {/* PROGRESS */}
+              <div style={{ flex:1 }}>
+                {runningHW && <ProgressBar pct={pctHW} label="HW UART TRANSFER"/>}
+                {runningSW && <ProgressBar pct={pctSW} label="SW CPU PROCESSING"/>}
+                {!runningHW && !runningSW && (
+                  <div style={{ fontSize:9, color:T.TXT3 }}>
+                    {!hasImg ? 'Select an image to begin.' : hwDone||swDone ? `✓  Run complete  —  ${imgSize.val}×${imgSize.val} Sobel` : 'Image loaded. Ready to run.'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <ConsoleLog entries={log} logRef={logRef}/>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT ────────────────────────────────────────────────────────────────────
+function App() {
+  const [stage, setStage] = useState(()=>{
+    try { const s = localStorage.getItem('fpga_stage'); return s ? JSON.parse(s) : null; } catch{ return null; }
+  });
+
+  const handleConnect = (conn) => {
+    localStorage.setItem('fpga_stage', JSON.stringify(conn));
+    setStage(conn);
+  };
+  const handleDisconnect = () => {
+    localStorage.removeItem('fpga_stage');
+    setStage(null);
+  };
+
+  return stage
+    ? <Dashboard conn={stage} onDisconnect={handleDisconnect}/>
+    : <ConnectionStage onConnect={handleConnect}/>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
