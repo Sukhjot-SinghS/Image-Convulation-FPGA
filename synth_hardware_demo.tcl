@@ -42,13 +42,14 @@ puts "\n>>> Step 1: Project created."
 # ── Step 2: Add RTL Source Files ─────────────────────────────────────────────
 # CPU pipeline + RV32M
 add_files [list \
-    ${cpu_rtl}/pipeline.v    \
-    ${cpu_rtl}/IF_ID.v       \
-    ${cpu_rtl}/execute.v     \
-    ${cpu_rtl}/wb.v          \
-    ${cpu_rtl}/hazard_unit.v \
-    ${cpu_rtl}/rv32m_alu.v   \
-    ${cpu_rtl}/memory.v      \
+    ${cpu_rtl}/pipeline.v      \
+    ${cpu_rtl}/IF_ID.v         \
+    ${cpu_rtl}/execute.v       \
+    ${cpu_rtl}/wb.v            \
+    ${cpu_rtl}/hazard_unit.v   \
+    ${cpu_rtl}/decoder_ext.v   \
+    ${cpu_rtl}/rv32m_alu.v     \
+    ${cpu_rtl}/memory.v        \
 ]
 
 # Coprocessor island

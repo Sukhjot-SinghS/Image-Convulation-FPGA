@@ -511,6 +511,11 @@ class UARTWorker:
                        "message": f"Opening {self._port} @ {self._baud} baud ..."})
             ser = serial.Serial(port=self._port, baudrate=self._baud,
                                 timeout=10, write_timeout=10)
+            ser.set_buffer_size(rx_size=32768, tx_size=32768)
+            # Flush any stale bytes left in the Windows USB-CDC RX buffer from
+            # a previous run. Without this, old FPGA TX bytes are returned as
+            # the "response" for the current run (black / garbage image).
+            ser.reset_input_buffer()
 
             self._put({"type": "log", "level": "TX",
                        "message": f"Transmitting {tx_bytes:,} bytes -> FPGA ..."})
@@ -526,6 +531,11 @@ class UARTWorker:
             tx_ms = (time.perf_counter() - t_hw_start) * 1000
             self._put({"type": "log", "level": "TX",
                        "message": f"TX complete - {sent:,} bytes in {tx_ms:.1f} ms"})
+
+            # Critical: flush() blocks until all bytes physically leave the OS/USB-CDC
+            # driver buffer. Without this, ser.read() timeout starts while the FPGA
+            # is still receiving image bytes → FSM stuck in WAIT_IMAGE → 0 bytes back.
+            ser.flush()
 
             self._put({"type": "log", "level": "RX",
                        "message": f"Awaiting {self._rx_bytes:,} bytes <- FPGA ..."})
@@ -569,8 +579,8 @@ class UARTWorker:
 # ----------------------------------------------------------------------------
 
 def sobel_3x3(gray: np.ndarray) -> np.ndarray:
-    """Valid-only 3x3 Sobel magnitude; input NxN -> output (N-2)x(N-2), uint8."""
-    g = gray.astype(np.int32)
+    """Zero-padded 'same' 3x3 Sobel magnitude; NxN -> NxN, uint8."""
+    g = np.pad(gray.astype(np.int32), 1, mode='constant', constant_values=0)
     gx = (
         -1 * g[0:-2, 0:-2] + 1 * g[0:-2, 2:] +
         -2 * g[1:-1, 0:-2] + 2 * g[1:-1, 2:] +
@@ -791,6 +801,7 @@ class MainDashboard(ctk.CTkFrame):
         "Sobel Y":       2,
         "Sharpen":       3,
         "Edge Detect":   4,
+        "Identity (debug)": 5,
     }
 
     def __init__(self, master: tk.Misc, port: str, baud: int, sim_mode: bool,
@@ -1080,7 +1091,7 @@ class MainDashboard(ctk.CTkFrame):
         self._hw_target_rows["Architecture"].configure(text="RISC-V  RV32IM")
         self._hw_target_rows["Kernel"].configure(text="3 x 3  Sobel")
         self._hw_target_rows["Input"].configure(text=f"{s}x{s} x1")
-        self._hw_target_rows["Output"].configure(text=f"{s - 2}x{s - 2} x1")
+        self._hw_target_rows["Output"].configure(text=f"{s}x{s} x1")
         self._hw_target_rows["Precision"].configure(text="UINT8 / Fixed")
 
     # ------ image selection ------
@@ -1145,7 +1156,20 @@ class MainDashboard(ctk.CTkFrame):
         arr = np.array(self._source_img, dtype=np.uint8)
         filter_id = self.FILTER_MAP.get(self._filter_var.get(), 0)
         payload = bytes([filter_id]) + arr.tobytes()
-        rx_bytes = (self._size - 2) * (self._size - 2)
+        # Read 16384 image bytes + 4 cycle count bytes = 16388 (same/zero-pad mode)
+        rx_bytes = (self._size * self._size) + 4
+
+        # Guard: FPGA is hardcoded for 128×128. Sending a larger image would
+        # overflow the BRAM and corrupt the transfer for all subsequent runs.
+        if not self._sim_mode and self._size != 128:
+            self._log.log("ERR",
+                f"Hardware mode only supports 128×128. "
+                f"Current size is {self._size}×{self._size}. "
+                f"Switch to 128 before running hardware."
+            )
+            self._running = None
+            self._refresh_buttons()
+            return
 
         if self._sim_mode:
             # simulate TX+RX by running Sobel locally with artificial delay
@@ -1290,9 +1314,21 @@ class MainDashboard(ctk.CTkFrame):
             self._on_error(msg["message"])
 
     def _on_hw_result(self, raw: bytes, ms: float) -> None:
-        n = self._size - 2
+        n = self._size          # same/zero-pad: output is full NxN
+        img_len = n * n
         try:
-            arr = np.frombuffer(raw, dtype=np.uint8).reshape((n, n))
+            # Split raw bytes: [0:img_len] is image, [img_len:img_len+4] is cycle_count
+            img_raw = raw[:img_len]
+            cycle_raw = raw[img_len:img_len+4]
+            
+            arr = np.frombuffer(img_raw, dtype=np.uint8).reshape((n, n))
+            
+            # Optional: log the actual hardware cycle count if 4 bytes were received
+            if len(cycle_raw) == 4:
+                import struct
+                hw_cycles = struct.unpack("<I", cycle_raw)[0]
+                self._log.log("INFO", f"Hardware Benchmark: {hw_cycles:,} cycles")
+                
         except ValueError as e:
             self._on_error(f"Bad HW payload: {e}")
             return

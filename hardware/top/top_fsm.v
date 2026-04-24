@@ -8,7 +8,7 @@ module top_fsm #(
     parameter IMG_W        = 128,
     parameter IMG_H        = 128,
     parameter IMG_SIZE     = 16384, // 128*128
-    parameter OUT_SIZE     = 15876  // 126*126
+    parameter OUT_SIZE     = 16384  // 128*128 — same/zero-pad mode
 )(
     input  wire        clk,
     input  wire        reset,       // active-low reset
@@ -26,7 +26,15 @@ module top_fsm #(
     output wire [31:0] cpu_rdata,   // CPU read data
 
     // ── Benchmark cycle counter (from top_fpga.v) ────────────
-    input  wire [31:0] cycle_count  // frozen cycle count for UART TX
+    input  wire [31:0] cycle_count,  // frozen cycle count for UART TX
+
+    // ── Debug outputs (Phase 1 diagnostics: wired to board LEDs)
+    output wire [2:0]  debug_fsm_state,
+    output wire        debug_rx_active,
+    output wire        debug_tx_active,
+    output wire        debug_img_loaded,
+    output wire        debug_conv_done,
+    output wire        debug_sw_done
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -43,10 +51,11 @@ localparam PROCESSING     = 3'd2;  // conv running
 localparam TRANSMIT       = 3'd3;  // sending output image back
 localparam IDLE_DONE      = 3'd4;  // finished, back to wait
 localparam DRAIN          = 3'd5;  // 4-cycle pipeline drain
+localparam WAIT_TX_DB     = 3'd6;  // Wait for software doorbell (SW_DONE_REG)
 localparam WAIT_FILTER_ID = 3'd7;  // initial: consume 1 UART byte as filter ID
 
-reg [2:0] fsm_state;
-reg [2:0] drain_count;
+reg [2:0] fsm_state   = WAIT_FILTER_ID;
+reg [2:0] drain_count = 3'd0;
 
 // ─────────────────────────────────────────────────────────────
 //  THE BRAM HIJACK LOGIC
@@ -73,7 +82,10 @@ always @(posedge clk or negedge reset) begin
 end
 
 // Multiplex BRAM read and MMIO read safely
-assign cpu_rdata = cpu_reads_bram_d1 ? {24'd0, bram_in_rd_data} : mmio_rdata;
+// BUG FIX: Replicate bram_in_rd_data across all 4 byte lanes!
+// The CPU's write-back stage extracts the byte based on the lower 2 bits of the address.
+// By duplicating it 4 times, any byte read (LBU) will extract the correct pixel value.
+assign cpu_rdata = cpu_reads_bram_d1 ? {4{bram_in_rd_data}} : mmio_rdata;
 
 // ─────────────────────────────────────────────────────────────
 //  Internal wires 
@@ -108,7 +120,18 @@ reg  [7:0]  tx_byte;
 wire        tx_done;
 wire        sw_done;        // Need this wire to catch the doorbell!
 wire [31:0] mmio_rdata;
-reg  [7:0]  filter_id_reg;  // Filter ID captured from first UART byte
+reg  [7:0]  filter_id_reg = 8'd0;  // Filter ID captured from first UART byte
+
+reg         sw_done_latched;
+
+always @(posedge clk or negedge reset) begin
+    if (!reset)
+        sw_done_latched <= 1'b0;
+    else if (sw_done)
+        sw_done_latched <= 1'b1;
+    else if (fsm_state == TRANSMIT)
+        sw_done_latched <= 1'b0;
+end
 
 // ─────────────────────────────────────────────────────────────
 //  Image load counter
@@ -127,7 +150,11 @@ always @(posedge clk or negedge reset) begin
         bram_in_we    <= 1'b0;
         img_load_done <= 1'b0;
 
-        if (rx_dv && fsm_state == WAIT_IMAGE) begin
+        // Explicitly zero the write pointer at the start of each new frame so
+        // a partial/aborted previous transfer cannot leave a stale offset.
+        if (fsm_state == WAIT_FILTER_ID)
+            rx_byte_count <= 14'd0;
+        else if (rx_dv && fsm_state == WAIT_IMAGE) begin
             bram_in_we      <= 1'b1;
             bram_in_wr_addr <= rx_byte_count;
 
@@ -155,7 +182,7 @@ end
 // ─────────────────────────────────────────────────────────────
 //  Output transmit counter and robust FSM
 // ─────────────────────────────────────────────────────────────
-reg  [13:0] tx_byte_count;
+reg  [14:0] tx_byte_count;   // 15 bits: image bytes 0..16383 + cycle bytes 16384..16387
 reg  [2:0]  tx_fsm;
 
 localparam TX_FETCH_ADDR = 3'd0;
@@ -168,7 +195,7 @@ reg [1:0] cycle_byte_sel;  // selects which byte of cycle_count to send (0=MSB..
 
 always @(posedge clk or negedge reset) begin
     if (!reset) begin
-        tx_byte_count    <= 14'd0;
+        tx_byte_count    <= 15'd0;
         bram_out_rd_addr <= 14'd0;
         tx_start         <= 1'b0;
         tx_byte          <= 8'd0;
@@ -180,7 +207,7 @@ always @(posedge clk or negedge reset) begin
         if (fsm_state == TRANSMIT) begin
             case (tx_fsm)
                 TX_FETCH_ADDR: begin
-                    bram_out_rd_addr <= tx_byte_count;
+                    bram_out_rd_addr <= tx_byte_count[13:0];  // image bytes only, fits 14 bits
                     tx_fsm           <= TX_FETCH_WAIT;
                 end
                 TX_FETCH_WAIT: begin
@@ -193,33 +220,34 @@ always @(posedge clk or negedge reset) begin
                 end
                 TX_WAIT_DONE: begin
                     if (tx_done) begin
-                        if (tx_byte_count < 14'd15875) begin
+                        if (tx_byte_count < 15'd16383) begin
                             // Still sending image bytes
-                            tx_byte_count <= tx_byte_count + 14'd1;
+                            tx_byte_count <= tx_byte_count + 15'd1;
                             tx_fsm        <= TX_FETCH_ADDR;
                         end
-                        else if (tx_byte_count == 14'd15875) begin
+                        else if (tx_byte_count == 15'd16383) begin
                             // Last image byte done → start cycle-count phase
-                            tx_byte_count  <= 14'd15876;
+                            tx_byte_count  <= 15'd16384;
                             cycle_byte_sel <= 2'd0;
                             tx_fsm         <= TX_SEND_CYCLES;
                         end
-                        else if (tx_byte_count < 14'd15879) begin
+                        else if (tx_byte_count < 15'd16387) begin
                             // Intermediate cycle-count byte done → next one
-                            tx_byte_count <= tx_byte_count + 14'd1;
+                            tx_byte_count <= tx_byte_count + 15'd1;
                             tx_fsm        <= TX_SEND_CYCLES;
                         end
-                        // tx_byte_count == 15879: last cycle byte done
+                        // tx_byte_count == 16387: last cycle byte done
                         // Main FSM catches this and transitions to IDLE_DONE
                     end
                 end
                 TX_SEND_CYCLES: begin
-                    // Send 4 bytes of cycle_count, MSB first
+                    // Send 4 bytes of cycle_count, LSB first (little-endian)
+                    // Python reads with struct.unpack("<I", ...) → byte0 = LSB
                     case (cycle_byte_sel)
-                        2'd0: tx_byte <= cycle_count[31:24];
-                        2'd1: tx_byte <= cycle_count[23:16];
-                        2'd2: tx_byte <= cycle_count[15:8];
-                        2'd3: tx_byte <= cycle_count[7:0];
+                        2'd0: tx_byte <= cycle_count[7:0];
+                        2'd1: tx_byte <= cycle_count[15:8];
+                        2'd2: tx_byte <= cycle_count[23:16];
+                        2'd3: tx_byte <= cycle_count[31:24];
                     endcase
                     tx_start       <= 1'b1;
                     tx_fsm         <= TX_WAIT_DONE;
@@ -228,7 +256,7 @@ always @(posedge clk or negedge reset) begin
             endcase
         end
         else begin
-            tx_byte_count    <= 14'd0;
+            tx_byte_count    <= 15'd0;
             bram_out_rd_addr <= 14'd0;
             tx_fsm           <= TX_FETCH_ADDR;
             cycle_byte_sel   <= 2'd0;
@@ -252,14 +280,10 @@ always @(posedge clk or negedge reset) begin
             WAIT_IMAGE: begin
                 if (img_load_done)
                     fsm_state <= WAIT_START;
-                else if (sw_done)          // <--- ESCAPE HATCH ADDED HERE!
-                    fsm_state <= TRANSMIT; 
             end
             WAIT_START: begin
                 if (lb_start)
                     fsm_state <= PROCESSING;
-                else if (sw_done)            
-                    fsm_state <= TRANSMIT;
             end
             PROCESSING: begin
                 if (lb_done) begin
@@ -268,17 +292,22 @@ always @(posedge clk or negedge reset) begin
                 end
             end
             DRAIN: begin
-                if (drain_count == 3'd4)
-                    fsm_state <= 3'd6; // WAIT_TX_DB
-                else
-                    drain_count <= drain_count + 3'd1;
-            end
-            3'd6: begin // WAIT_TX_DB
-                if (sw_done)
+                if (drain_count == 3'd4) begin
+                    // Auto-advance: no CPU doorbell needed.
+                    // WAIT_TX_DB deadlock removed — DRAIN guarantees the conv pipeline
+                    // has flushed its last pixel into BRAM_OUT (4-stage latency drained).
                     fsm_state <= TRANSMIT;
+                end else begin
+                    drain_count <= drain_count + 3'd1;
+                end
+            end
+            WAIT_TX_DB: begin
+                // Unreachable now. Keep state so existing bitstreams don't synthesise
+                // to an X-propagation default; just loop back to TRANSMIT.
+                fsm_state <= TRANSMIT;
             end
             TRANSMIT: begin
-                if (tx_done && tx_byte_count == 14'd15879)
+                if (tx_done && tx_byte_count == 15'd16387)
                     fsm_state <= IDLE_DONE;
             end
             IDLE_DONE: begin
@@ -386,8 +415,75 @@ mmio_decoder mmio_inst (
     .start        (lb_start),
     .sw_done      (sw_done),
     .done_in      (lb_done),
-    .img_ready    ((fsm_state == WAIT_START) || (fsm_state == PROCESSING) || (fsm_state == DRAIN)),
+    .img_ready    ((fsm_state == WAIT_START) || (fsm_state == PROCESSING) || (fsm_state == DRAIN) || (fsm_state == WAIT_TX_DB)),
     .filter_id_in (filter_id_reg)
 );
-// comment diya h yha 
+// ─────────────────────────────────────────────────────────────
+//  Phase 1 DEBUG: LED indicators
+//  - Remaps fsm_state to a human-readable order for LED display
+//  - Stretches single-cycle pulses (rx_dv, tx_done) so human eye can see
+//  - Sticky latches for progress milestones, cleared on IDLE_DONE
+// ─────────────────────────────────────────────────────────────
+
+// Remap state to a monotonic order so LED count = progress
+// 0: WAIT_FILTER_ID, 1: WAIT_IMAGE, 2: WAIT_START, 3: PROCESSING,
+// 4: DRAIN, 5: WAIT_TX_DB, 6: TRANSMIT, 7: IDLE_DONE
+reg [2:0] dbg_state_r;
+always @(*) begin
+    case (fsm_state)
+        WAIT_FILTER_ID: dbg_state_r = 3'd0;
+        WAIT_IMAGE:     dbg_state_r = 3'd1;
+        WAIT_START:     dbg_state_r = 3'd2;
+        PROCESSING:     dbg_state_r = 3'd3;
+        DRAIN:          dbg_state_r = 3'd4;
+        WAIT_TX_DB:     dbg_state_r = 3'd5;
+        TRANSMIT:       dbg_state_r = 3'd6;
+        IDLE_DONE:      dbg_state_r = 3'd7;
+        default:        dbg_state_r = 3'd0;
+    endcase
+end
+assign debug_fsm_state = dbg_state_r;
+
+// Pulse stretcher: extends rx_dv / tx_done pulses to ~20ms so LED is visible.
+// At 25 MHz, 2^19 = ~20.97 ms. Using 19-bit counter.
+reg [18:0] rx_stretch_cnt;
+reg [18:0] tx_stretch_cnt;
+always @(posedge clk or negedge reset) begin
+    if (!reset) begin
+        rx_stretch_cnt <= 19'd0;
+        tx_stretch_cnt <= 19'd0;
+    end else begin
+        if (rx_dv)                        rx_stretch_cnt <= 19'h7FFFF;
+        else if (rx_stretch_cnt != 19'd0) rx_stretch_cnt <= rx_stretch_cnt - 19'd1;
+
+        if (tx_done)                      tx_stretch_cnt <= 19'h7FFFF;
+        else if (tx_stretch_cnt != 19'd0) tx_stretch_cnt <= tx_stretch_cnt - 19'd1;
+    end
+end
+assign debug_rx_active = (rx_stretch_cnt != 19'd0);
+assign debug_tx_active = (tx_stretch_cnt != 19'd0);
+
+// Sticky progress latches — cleared when FSM returns to WAIT_FILTER_ID
+reg img_loaded_sticky;
+reg conv_done_sticky;
+reg sw_done_sticky;
+always @(posedge clk or negedge reset) begin
+    if (!reset) begin
+        img_loaded_sticky <= 1'b0;
+        conv_done_sticky  <= 1'b0;
+        sw_done_sticky    <= 1'b0;
+    end else if (fsm_state == WAIT_FILTER_ID) begin
+        img_loaded_sticky <= 1'b0;
+        conv_done_sticky  <= 1'b0;
+        sw_done_sticky    <= 1'b0;
+    end else begin
+        if (img_load_done) img_loaded_sticky <= 1'b1;
+        if (lb_done)       conv_done_sticky  <= 1'b1;
+        if (sw_done)       sw_done_sticky    <= 1'b1;
+    end
+end
+assign debug_img_loaded = img_loaded_sticky;
+assign debug_conv_done  = conv_done_sticky;
+assign debug_sw_done    = sw_done_sticky;
+
 endmodule
