@@ -34,7 +34,14 @@
       "Bash(mv \"Project_Design_Status_Report_Group18.docx\" docs/)",
       "Bash(mv \"Project_Design_Status_Report_Group18_FILLED.docx\" docs/)",
       "Bash(mv \"Project_Design_Status_Report_Group18_Final.docx\" docs/)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('fpga_coprocessor_ui.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python fpga_coprocessor_ui.py)",
+      "Bash(python -c ' *)",
+      "Bash(python -W all fpga_coprocessor_ui.py)",
+      "Bash(jobs)",
+      "Bash(git stash *)",
+      "Bash(python -c \"import customtkinter; import PIL; import serial; import numpy; print\\('all imports OK'\\)\")"
     ]
   }
 }
