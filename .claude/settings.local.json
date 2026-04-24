@@ -27,7 +27,14 @@
       "Bash(riscv-none-elf-objdump -h software/mem_generator/code.elf)",
       "Bash(riscv-none-elf-readelf -S software/mem_generator/code.elf)",
       "Bash(git add *)",
-      "Bash(git cherry-pick *)"
+      "Bash(git cherry-pick *)",
+      "Bash(git -C \"c:/Users/shour/OneDrive/Desktop/SEM4/Image-Convulation-FPGA\" status --short)",
+      "Bash(mkdir -p old_markdowns old_files)",
+      "Bash(git mv *)",
+      "Bash(mv \"Project_Design_Status_Report_Group18.docx\" docs/)",
+      "Bash(mv \"Project_Design_Status_Report_Group18_FILLED.docx\" docs/)",
+      "Bash(mv \"Project_Design_Status_Report_Group18_Final.docx\" docs/)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

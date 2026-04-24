@@ -25,10 +25,12 @@ xsim.dir/
 *.ip_user_files/
 *.sim/
 *.runs/
-build/
-dist/
-__pycache__/
-node_modules/
 
 # Keep the Vivado project file, but ignore its auto-generated backups
 *.xpr.backup*
+
+# Build / cache artifacts
+node_modules/
+build/
+__pycache__/
+dist/
