@@ -68,9 +68,12 @@ wire cpu_writes_bram_out = (cpu_addr[31:16] == 16'hC001) && mem_write;
 wire [13:0] actual_bram_in_rd_addr = cpu_reads_bram_in ? cpu_raddr[13:0] : bram_in_rd_addr;
 
 // Mux the Write port of BRAM_OUT (Hardware vs CPU)
+// NOTE: For SB instructions, wb.v encodes cpu_wdata as {4{byte}} — all lanes hold
+// the same byte. cpu_wdata[7:0] is always the correct pixel value to write.
 wire [13:0] actual_bram_out_wr_addr = cpu_writes_bram_out ? cpu_addr[13:0] : pixel_idx_out;
 wire [7:0]  actual_bram_out_wr_data = cpu_writes_bram_out ? cpu_wdata[7:0] : pixel_out;
 wire        actual_bram_out_we      = cpu_writes_bram_out ? 1'b1           : ce_out_valid;
+
 
 // Your excellent 1-cycle delay fix to match BRAM latency!
 reg cpu_reads_bram_d1;
@@ -284,6 +287,8 @@ always @(posedge clk or negedge reset) begin
             WAIT_START: begin
                 if (lb_start)
                     fsm_state <= PROCESSING;
+                else if (sw_done_latched)
+                    fsm_state <= TRANSMIT;  // SW-mode bypass: CPU did math, skip DSP
             end
             PROCESSING: begin
                 if (lb_done) begin

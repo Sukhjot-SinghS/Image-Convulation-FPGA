@@ -24,12 +24,48 @@ To maintain a clean working environment and avoid Vivado merge conflicts, the re
   * `/coprocessor` - MMIO decoder, state machine, line buffer, and DSP MAC datapath.
   * `/constraints` - Physical `.xdc` pin mappings for the FPGA board.
 * `/software` - The 5 C-workloads compiled via the RISC-V toolchain used for system validation (`sw_sobel.c`, `hw_conv_mmio.c`, etc.).
-* `/demo` - Python GUI scripts and UART communication drivers for the final live demonstration.
+* `fpga_coprocessor_ui.py` (Root) - Python GUI script and UART communication driver for the live demonstration.
 
 ## Team Setup & Branching
 This project is actively developed by a 5-member team. 
 * **Main Branch:** Reserved strictly for Verilog modules that have passed isolated testbench verification.
 * **Vivado Users:** Please ensure your local environment respects the root `.gitignore` to prevent pushing `.log`, `.jou`, and massive `.cache/` build directories.
+
+## Quick Start / Running the Project
+
+To evaluate and run this project on your local machine, please follow these exact steps:
+
+### 1. Update Hardcoded Memory Paths
+The FPGA block RAM initialization requires absolute paths for synthesis. Open `hardware/cpu/rtl/memory.v` and update the `$readmemh` paths on **line 17** and **line 58** by replacing `<INSERT_YOUR_PATH_HERE>` with the absolute path of this repository's root directory on your system.
+*   **Example:** Change `"<INSERT_YOUR_PATH_HERE>/hardware/cpu/imem.hex"` to `"D:/Your/Path/hardware/cpu/imem.hex"`
+
+### 2. Compile the Software (Make)
+Open a terminal in the root directory of this repository and run `make` along with the program you want to load onto the CPU (e.g., the hardware convolution demonstration).
+```bash
+make hw_conv_mmio
+```
+*(This will invoke the RISC-V GCC toolchain to compile the C-code and generate the `imem.hex` and `dmem.hex` files needed by the FPGA).*
+
+### 3. Rebuild the Vivado Project
+We have provided a Tcl script to automatically reconstruct the Vivado project with all RTL files and constraints.
+1. Open **Vivado**.
+2. At the bottom of the screen, open the **Tcl Console**.
+3. Use the `cd` command to navigate to the root of this project folder.
+4. Run the rebuild script:
+   ```tcl
+   source rebuild_vivado_convolver.tcl
+   ```
+
+### 4. Program the FPGA
+1. In Vivado, click **Generate Bitstream** in the Flow Navigator.
+2. Once the bitstream is generated, open the **Hardware Manager**.
+3. Connect your Nexys A7-100T board via USB and select **Auto Connect**.
+4. Click **Program Device** to flash the bitstream onto the FPGA.
+
+### 5. Launch the UI
+With the FPGA programmed and running, you can now launch the Python GUI to send an image and see the convolution output.
+*   **Easy Mode:** Simply double-click `Filter.exe` located in the root directory.
+*   **From Source:** Install the dependencies (`pip install -r requirements.txt`) and run `python fpga_coprocessor_ui.py`.
 
 ---
 *Developed for CS 224: Computer Architecture.*

@@ -130,15 +130,22 @@ wire is_mmio_write = (dmem_write_address >= 32'h8000_0000);
     wire is_mmio_read_ex = (dmem_read_address >= 32'h8000_0000);
 
     // BUG 1 FIX: Register the read check to align with WB stage (1 cycle latency)
+    // CRITICAL: Gate on !stall_read ONLY — matching the ex_mem_wb_reg pipeline register.
+    // The EX→WB register (execute.v line 290) advances when !stall_read, regardless of wb_stall.
+    // If we also gate on !wb_stall here, is_mmio_read_wb gets frozen during branch stalls
+    // while the pipeline register advances, causing a desync where a BRAM_IN load in WB
+    // sees is_mmio_read_wb=0 (stale) and reads DMEM (zeros) instead of MMIO (pixel data).
     reg is_mmio_read_wb;
     always @(posedge clk or negedge reset) begin
         if (!reset) begin
             is_mmio_read_wb <= 1'b0;
         end
-        else if (!stall_read && !wb_stall) begin 
+        else if (!stall_read) begin
             is_mmio_read_wb <= is_mmio_read_ex;
         end
     end
+
+
 
     // BUG 2 FIX: Drive the physical ports using the split addresses
     assign mmio_write_enable  = wb_mem_write && is_mmio_write;
