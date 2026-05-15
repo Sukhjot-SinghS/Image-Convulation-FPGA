@@ -200,10 +200,9 @@ SRC_FIB      = code_fib.c
 SRC_ADDITION = code_addition.c
 SRC_FSW = filter_switch.c
 SRC_MMIO = hw_conv_mmio.c
+SRC_SW_CONV  = sw_conv_mmio.c
+SRC_UNIFIED  = unified_conv.c
 SRC_MULDIV = mul_div_test.c
-SRC_BLUR = sw_blur.c
-SRC_GAU_BLUR = sw_gaussian_blur.c
-SRC_SOBEL = sw_sobel.c
 
 
 # # extra -->
@@ -219,7 +218,7 @@ TARGET   = code.elf
 OUT_DIR = ./imem_dmem
 # <-- extra
 
-.PHONY: all clean sw_sobel
+.PHONY: all clean sw_conv hw_conv_mmio unified_conv
 
 fib: $(SRC_FIB) start.S
 	$(CC) $(CFLAGS) start.S $(SRC_FIB) -o $(TARGET) $(LDFLAGS)
@@ -281,20 +280,9 @@ mul_div_test: $(SRC_MULDIV) start.S
 	@echo "Hex files synchronized to Hardware directory!"
 
 
-sw_blur: $(SRC_BLUR) start.S
-	$(CC) $(CFLAGS) start.S $(SRC_BLUR) -o $(TARGET) $(LDFLAGS)
-	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
-	$(OBJCOPY) -j .data -O binary $(TARGET) ./imem_dmem/dmem.bin
-	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
-	cd imem_dmem && python bin2hex.py
-	@echo "NEW STEP: Copy the results to the Hardware directory"
-	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
-	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
-	@echo "Hex files synchronized to Hardware directory!"
-
-
-sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
-	$(CC) $(CFLAGS) start.S $(SRC_GAU_BLUR) -o $(TARGET) $(LDFLAGS)
+sw_conv: $(SRC_SW_CONV) start.S
+	@echo ">>> Building UNIFIED Software Convolution Daemon (all 6 filters)"
+	$(CC) $(CFLAGS) start.S $(SRC_SW_CONV) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
@@ -302,11 +290,11 @@ sw_gaussian_blur: $(SRC_GAU_BLUR) start.S
 	@echo "NEW STEP: Copy the results to the Hardware directory"
 	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
 	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
-	@echo "Hex files synchronized to Hardware directory!"
+	@echo "=== SW firmware ready! Use updatemem or re-flash via Vivado ==="
 
-
-sw_sobel: $(SRC_SOBEL) start.S
-	$(CC) $(CFLAGS) start.S $(SRC_SOBEL) -o $(TARGET) $(LDFLAGS)
+unified_conv: $(SRC_UNIFIED) start.S
+	@echo ">>> Building GOD MODE Unified Firmware (HW + SW loops)"
+	$(CC) $(CFLAGS) start.S $(SRC_UNIFIED) -o $(TARGET) $(LDFLAGS)
 	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
 	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
 	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
@@ -314,7 +302,20 @@ sw_sobel: $(SRC_SOBEL) start.S
 	@echo "NEW STEP: Copy the results to the Hardware directory"
 	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
 	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
-	@echo "Hex files synchronized to Hardware directory!"
+	@echo "=== GOD MODE firmware ready! ==="
+
+test_bram_out: test_bram_out.c start.S
+	@echo ">>> Building BRAM_OUT Write Path Diagnostic"
+	$(CC) $(CFLAGS) start.S test_bram_out.c -o $(TARGET) $(LDFLAGS)
+	$(OBJCOPY) -O binary $(TARGET) ./imem_dmem/imem.bin
+	$(OBJCOPY) -j .data -j .rodata -j .bss -O binary $(TARGET) .\imem_dmem\dmem.bin
+	$(OBJDUMP) -d $(TARGET) > ./imem_dmem/code.dis
+	cd imem_dmem && python bin2hex.py
+	@echo "NEW STEP: Copy the results to the Hardware directory"
+	copy /Y .\imem_dmem\imem.hex ..\..\hardware\cpu\imem.hex
+	copy /Y .\imem_dmem\dmem.hex ..\..\hardware\cpu\dmem.hex
+	@echo "=== Test firmware ready! Flash and run with fpga_coprocessor_ui ==="
+
 
 
 # /////clean function

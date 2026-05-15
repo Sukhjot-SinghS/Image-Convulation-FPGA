@@ -490,12 +490,14 @@ class UARTWorker:
     CHUNK_SZ = 512
 
     def __init__(self, port: str, baud: int, payload: bytes,
-                 rx_bytes: int, result_q: queue.Queue) -> None:
+                 rx_bytes: int, result_q: queue.Queue,
+                 timeout_sec: int = 10) -> None:
         self._port = port
         self._baud = baud
         self._payload = payload
         self._rx_bytes = rx_bytes
         self._q = result_q
+        self._timeout = timeout_sec
         self._thread = threading.Thread(target=self._run, daemon=True, name="UARTWorker")
 
     def start(self) -> None:
@@ -510,7 +512,7 @@ class UARTWorker:
             self._put({"type": "log", "level": "INFO",
                        "message": f"Opening {self._port} @ {self._baud} baud ..."})
             ser = serial.Serial(port=self._port, baudrate=self._baud,
-                                timeout=10, write_timeout=10)
+                                timeout=self._timeout, write_timeout=10)
             ser.set_buffer_size(rx_size=32768, tx_size=32768)
             # Flush any stale bytes left in the Windows USB-CDC RX buffer from
             # a previous run. Without this, old FPGA TX bytes are returned as
@@ -536,6 +538,8 @@ class UARTWorker:
             # driver buffer. Without this, ser.read() timeout starts while the FPGA
             # is still receiving image bytes → FSM stuck in WAIT_IMAGE → 0 bytes back.
             ser.flush()
+
+            self._put({"type": "tx_done"})  # chronometer start signal
 
             self._put({"type": "log", "level": "RX",
                        "message": f"Awaiting {self._rx_bytes:,} bytes <- FPGA ..."})
@@ -822,8 +826,13 @@ class MainDashboard(ctk.CTkFrame):
         self._source_img: Optional[Image.Image] = None
         self._sw_ms: Optional[float] = None
         self._hw_ms: Optional[float] = None
+        self._hw_cycles: Optional[int] = None   # actual FPGA benchmark cycles (HW run)
+        self._sw_cycles: Optional[int] = None   # actual FPGA benchmark cycles (SW run)
         self._result_q: queue.Queue = queue.Queue()
         self._running: Optional[str] = None   # None | "hw" | "sw"
+        self._sw_from_fpga: bool = False       # True when last SW result came from FPGA
+        self._chrono_start: Optional[float] = None   # perf_counter when TX flush done
+        self._chrono_job: Optional[str] = None        # after() ID for live tick
 
         self._build()
         self._poll_queue()
@@ -901,6 +910,43 @@ class MainDashboard(ctk.CTkFrame):
             btn.pack(fill="x", pady=2)
             self._size_cards[s] = btn
         self._highlight_size()
+        # ---- EXECUTION MODE INFO ----
+        # Both HW and SW modes run from the same unified_conv firmware.
+        # RUN HW  → dispatches to DSP conv_engine (filter_id sent as-is)
+        # RUN SW  → dispatches to RISC-V CPU math (filter_id | 16 sentinel)
+        # The sidebar toggle below is informational only.
+        SectionLabel(inner, "EXECUTION MODE").pack(anchor="w", pady=(14, 6))
+        hw_info = ctk.CTkFrame(inner, fg_color=T.CYAN_DIM, corner_radius=6,
+                               border_width=1, border_color=T.CYAN)
+        hw_info.pack(fill="x", pady=(0, 3))
+        ctk.CTkLabel(hw_info, text="RUN HW  →  DSP Engine",
+                     font=T.F_SMALL_B, text_color=T.CYAN,
+                     anchor="w").pack(fill="x", padx=8, pady=4)
+
+        sw_info = ctk.CTkFrame(inner, fg_color=T.WARN_DIM, corner_radius=6,
+                               border_width=1, border_color=T.WARN)
+        sw_info.pack(fill="x", pady=(0, 3))
+        ctk.CTkLabel(sw_info, text="RUN SW  →  RISC-V CPU",
+                     font=T.F_SMALL_B, text_color=T.WARN,
+                     anchor="w").pack(fill="x", padx=8, pady=4)
+
+        ctk.CTkLabel(
+            inner, text="Both modes use unified_conv firmware",
+            font=T.F_TINY, text_color=T.TEXT_DIM,
+        ).pack(anchor="w", pady=(2, 0))
+
+        # ---- CHRONOMETER ----
+        SectionLabel(inner, "CHRONOMETER").pack(anchor="w", pady=(14, 6))
+        self._chrono_lbl = ctk.CTkLabel(
+            inner, text="00:00.000", font=("Consolas", 22, "bold"),
+            text_color=T.PURPLE, anchor="w",
+        )
+        self._chrono_lbl.pack(fill="x")
+        self._chrono_sub = ctk.CTkLabel(
+            inner, text="FPGA processing latency",
+            font=T.F_TINY, text_color=T.TEXT_DIM,
+        )
+        self._chrono_sub.pack(anchor="w", pady=(0, 0))
 
         # ---- FILTER ----
         SectionLabel(inner, "FILTER").pack(anchor="w", pady=(14, 6))
@@ -1209,23 +1255,67 @@ class MainDashboard(ctk.CTkFrame):
                             "data": result.tobytes(), "ms": total_ms})
 
     def _run_sw(self) -> None:
+        """Run software convolution on the RISC-V CPU inside the FPGA.
+
+        Uses unified_conv firmware — sends filter_id | 16 so the firmware
+        knows to skip the DSP engine and run the RISC-V 3x3 sliding-window loop.
+        The FPGA FSM then transmits the SW-computed BRAM_OUT back over UART.
+        """
         if self._source_img is None or self._running is not None:
             return
+
+        if not self._sim_mode:
+            # Guard early: FPGA BRAM is hardwired for 128×128.
+            # Check BEFORE setting _running so the button stays enabled.
+            if self._size != 128:
+                self._log.log("ERR",
+                    f"FPGA SW mode only supports 128×128. "
+                    f"Current size is {self._size}×{self._size}. "
+                    f"Switch to 128 before running."
+                )
+                return
+
         self._running = "sw"
         self._refresh_buttons()
         self._panel_sw.clear()
-        self._progress.set_two_phase(False)
+        self._progress.set_two_phase(True)
         self._progress.reset()
         self._measuring_lbl.configure(text="*  MEASURING")
-        self._status_lbl.configure(text="Running SW Sobel 3x3 ...",
-                                   text_color=T.WARN)
-        threading.Thread(target=self._sw_worker, daemon=True).start()
+
+        if not self._sim_mode:
+            # ── FPGA SW path: send image to FPGA, RISC-V CPU does the math ──
+            self._status_lbl.configure(
+                text="Transmitting to FPGA → RISC-V SW conv ...",
+                text_color=T.WARN,
+            )
+            arr = np.array(self._source_img, dtype=np.uint8)
+            filter_id = self.FILTER_MAP.get(self._filter_var.get(), 0)
+            # Sentinel: filter_id | 16 — both sw_conv_mmio and unified_conv strip bit-4
+            # to get the actual filter_id and take the SW path.
+            payload = bytes([filter_id | 16]) + arr.tobytes()
+
+            # SW firmware writes full 128×128 frame + top_fsm appends 4 cycle bytes.
+            rx_bytes = (self._size * self._size) + 4
+
+            # RISC-V at 25 MHz doing 126×126 pixels × ~200 cycles/pixel ≈ 1–5 seconds.
+            # 30-second timeout gives massive headroom for any filter.
+            worker = UARTWorker(
+                port=self._port, baud=self._baud,
+                payload=payload, rx_bytes=rx_bytes, result_q=self._result_q,
+                timeout_sec=30,
+            )
+            worker.start()
+        else:
+            # ── Laptop SW fallback (sim mode) ──
+            self._status_lbl.configure(text="Running SW Sobel 3x3 (laptop CPU) ...",
+                                       text_color=T.WARN)
+            threading.Thread(target=self._sw_worker, daemon=True).start()
 
     def _sw_worker(self) -> None:
+        """Laptop-local NumPy convolution fallback (sim mode)."""
         arr = np.array(self._source_img, dtype=np.uint8)
         self._result_q.put({"type": "log", "level": "INFO",
-                            "message": f"SW Sobel on {arr.shape[0]}x{arr.shape[1]} ..."})
-        # animate progress to ~50 before work (CPU fast, bar is indicative)
+                            "message": f"SW Sobel on {arr.shape[0]}x{arr.shape[1]} (laptop CPU) ..."})
         for p in range(0, 40, 5):
             self._result_q.put({"type": "sw_progress", "value": p})
             time.sleep(0.01)
@@ -1239,17 +1329,69 @@ class MainDashboard(ctk.CTkFrame):
                             "message": f"SW convolution complete ({ms:.1f} ms)"})
         self._result_q.put({"type": "sw_result", "data": out, "ms": ms})
 
+    # ------ execution mode toggle ------
+
+    def _set_exec_mode(self, mode: str) -> None:
+        self._exec_mode_var.set(mode)
+        if mode == "HW (DSP)":
+            self._exec_hw_btn.configure(fg_color=T.CYAN_DIM, border_color=T.CYAN,
+                                         text_color=T.CYAN)
+            self._exec_sw_btn.configure(fg_color=T.BG_SURFACE, border_color=T.BG_BORDER,
+                                         text_color=T.TEXT_SEC)
+            self._log.log("INFO", "Execution mode: Hardware DSP Accelerator")
+        else:
+            self._exec_sw_btn.configure(fg_color=T.WARN_DIM, border_color=T.WARN,
+                                         text_color=T.WARN)
+            self._exec_hw_btn.configure(fg_color=T.BG_SURFACE, border_color=T.BG_BORDER,
+                                         text_color=T.TEXT_SEC)
+            self._log.log("WARN", "Execution mode: Software (RISC-V CPU). "
+                          "Make sure sw_conv firmware is flashed!")
+
+    # ------ chronometer ------
+
+    def _chrono_start_tick(self) -> None:
+        """Begin the live chronometer. Called when TX flush completes."""
+        self._chrono_start = time.perf_counter()
+        self._chrono_sub.configure(text="FPGA processing ...")
+        self._chrono_tick()
+
+    def _chrono_tick(self) -> None:
+        if self._chrono_start is None:
+            return
+        elapsed = time.perf_counter() - self._chrono_start
+        mins = int(elapsed) // 60
+        secs = elapsed - mins * 60
+        self._chrono_lbl.configure(text=f"{mins:02d}:{secs:06.3f}")
+        self._chrono_job = self.after(50, self._chrono_tick)
+
+    def _chrono_stop(self) -> None:
+        """Freeze the chronometer. Called when result arrives."""
+        if self._chrono_job is not None:
+            self.after_cancel(self._chrono_job)
+            self._chrono_job = None
+        if self._chrono_start is not None:
+            elapsed = time.perf_counter() - self._chrono_start
+            mins = int(elapsed) // 60
+            secs = elapsed - mins * 60
+            self._chrono_lbl.configure(text=f"{mins:02d}:{secs:06.3f}")
+            self._chrono_sub.configure(text="FPGA processing latency")
+            self._chrono_start = None
+
     def _reset_session(self, silent: bool = False) -> None:
         self._panel_sw.clear()
         self._panel_hw.clear()
         self._sw_ms = None
         self._hw_ms = None
+        self._hw_cycles = None
+        self._sw_cycles = None
         self._box_sw.clear()
         self._box_hw.clear()
         self._box_sp.clear()
         self._bar_chart.clear()
         self._progress.reset()
         self._measuring_lbl.configure(text="")
+        self._chrono_lbl.configure(text="00:00.000")
+        self._chrono_sub.configure(text="FPGA processing latency")
         if not silent:
             self._log.log("INFO", "Session reset. Canvases and timings cleared.")
             self._status_lbl.configure(
@@ -1299,6 +1441,8 @@ class MainDashboard(ctk.CTkFrame):
             self._progress.set_progress(msg["value"])
         elif t == "sw_progress":
             self._progress.set_progress(msg["value"])
+        elif t == "tx_done":
+            self._chrono_start_tick()
         elif t == "log":
             self._log.log(msg["level"], msg["message"])
             if msg["level"] == "TX":
@@ -1307,28 +1451,30 @@ class MainDashboard(ctk.CTkFrame):
                 self._status_lbl.configure(text="RX <- receiving ...",
                                            text_color=T.WARN)
         elif t == "result":
-            self._on_hw_result(msg["data"], msg["ms"])
+            self._chrono_stop()
+            if self._running == "sw":
+                self._on_fpga_sw_result(msg["data"], msg["ms"])
+            else:
+                self._on_hw_result(msg["data"], msg["ms"])
         elif t == "sw_result":
             self._on_sw_result(msg["data"], msg["ms"])
         elif t == "error":
+            self._chrono_stop()
             self._on_error(msg["message"])
 
     def _on_hw_result(self, raw: bytes, ms: float) -> None:
         n = self._size          # same/zero-pad: output is full NxN
         img_len = n * n
         try:
-            # Split raw bytes: [0:img_len] is image, [img_len:img_len+4] is cycle_count
             img_raw = raw[:img_len]
             cycle_raw = raw[img_len:img_len+4]
-            
             arr = np.frombuffer(img_raw, dtype=np.uint8).reshape((n, n))
-            
-            # Optional: log the actual hardware cycle count if 4 bytes were received
             if len(cycle_raw) == 4:
                 import struct
-                hw_cycles = struct.unpack("<I", cycle_raw)[0]
-                self._log.log("INFO", f"Hardware Benchmark: {hw_cycles:,} cycles")
-                
+                self._hw_cycles = struct.unpack("<I", cycle_raw)[0]
+                self._log.log("INFO", f"Hardware Benchmark: {self._hw_cycles:,} cycles")
+            else:
+                self._hw_cycles = None
         except ValueError as e:
             self._on_error(f"Bad HW payload: {e}")
             return
@@ -1340,7 +1486,37 @@ class MainDashboard(ctk.CTkFrame):
         self._status_lbl.configure(text=f"HW run complete.  Total I/O + Compute: {ms:.1f} ms", text_color=T.OK)
         self._refresh_buttons()
 
+    def _on_fpga_sw_result(self, raw: bytes, ms: float) -> None:
+        """Handle result from RISC-V CPU (SW mode via UART)."""
+        n = self._size
+        img_len = n * n
+        try:
+            img_raw = raw[:img_len]
+            cycle_raw = raw[img_len:img_len+4]
+            arr = np.frombuffer(img_raw, dtype=np.uint8).reshape((n, n))
+            if len(cycle_raw) == 4:
+                import struct
+                self._sw_cycles = struct.unpack("<I", cycle_raw)[0]
+                self._log.log("INFO", f"RISC-V SW Benchmark: {self._sw_cycles:,} cycles")
+            else:
+                self._sw_cycles = None
+        except ValueError as e:
+            self._on_error(f"Bad SW payload: {e}")
+            return
+        self._sw_from_fpga = True
+        self._panel_sw.display(Image.fromarray(arr, mode="L"), f"{n}x{n}")
+        self._sw_ms = ms
+        self._update_metrics()
+        self._running = None
+        self._measuring_lbl.configure(text="")
+        self._status_lbl.configure(
+            text=f"FPGA SW run complete.  Total I/O + Compute: {ms:.1f} ms",
+            text_color=T.OK,
+        )
+        self._refresh_buttons()
+
     def _on_sw_result(self, out: np.ndarray, ms: float) -> None:
+        self._sw_from_fpga = False
         img = Image.fromarray(out, mode="L")
         self._panel_sw.display(img, f"{out.shape[0]}x{out.shape[1]}")
         self._sw_ms = ms
@@ -1358,21 +1534,38 @@ class MainDashboard(ctk.CTkFrame):
         self._refresh_buttons()
 
     def _update_metrics(self) -> None:
-        def cycles_str(ms: float, clk_mhz: float) -> str:
-            kc = ms * clk_mhz     # ms * MHz = kilocycles
-            if kc >= 1000:
-                return f"{kc / 1000:,.1f} M cycles"
-            return f"{kc:,.1f} K cycles"
+        def fmt_cycles(c: int) -> str:
+            if c >= 1_000_000:
+                return f"{c / 1_000_000:,.2f} M cycles"
+            if c >= 1_000:
+                return f"{c / 1_000:,.1f} K cycles"
+            return f"{c:,} cycles"
 
-        if self._sw_ms is not None:
-            self._box_sw.set_values(f"{self._sw_ms:,.1f} ms",
-                                    cycles_str(self._sw_ms, 3000))  # ~3GHz CPU
+        def cycles_str_est(ms: float, clk_mhz: float) -> str:
+            kc = ms * clk_mhz
+            if kc >= 1000:
+                return f"{kc / 1000:,.1f} M cycles (est.)"
+            return f"{kc:,.1f} K cycles (est.)"
+
+        if getattr(self, "_sw_ms", None) is not None:
+            sw_sub = fmt_cycles(self._sw_cycles) if self._sw_cycles else \
+                     cycles_str_est(self._sw_ms, 25 if self._sw_from_fpga else 3000)
+            self._box_sw.set_values(f"{self._sw_ms:,.1f} ms", sw_sub)
+
         if self._hw_ms is not None:
-            self._box_hw.set_values(f"{self._hw_ms:,.1f} ms",
-                                    cycles_str(self._hw_ms, 100))   # 100MHz FPGA
+            hw_sub = fmt_cycles(self._hw_cycles) if self._hw_cycles else \
+                     cycles_str_est(self._hw_ms, 25)
+            self._box_hw.set_values(f"{self._hw_ms:,.1f} ms", hw_sub)
+
+        # Speedup: prefer actual cycle counts, fall back to wall-clock ratio
         if self._sw_ms is not None and self._hw_ms is not None and self._hw_ms > 0:
-            sp = self._sw_ms / self._hw_ms
-            self._box_sp.set_values(f"{sp:,.1f}x", f"{sp:,.1f}x time")
+            if self._sw_cycles and self._hw_cycles and self._hw_cycles > 0:
+                sp = self._sw_cycles / self._hw_cycles
+                self._box_sp.set_values(f"{sp:,.1f}x",
+                                        f"{self._sw_cycles:,} / {self._hw_cycles:,} cycles")
+            else:
+                sp = self._sw_ms / self._hw_ms
+                self._box_sp.set_values(f"{sp:,.1f}x", f"{sp:,.1f}x time")
             self._bar_chart.set_times(self._sw_ms, self._hw_ms)
 
     def _refresh_buttons(self) -> None:

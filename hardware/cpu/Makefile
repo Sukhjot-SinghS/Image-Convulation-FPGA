@@ -20,7 +20,7 @@ XELAB = xelab
 XSIM  = xsim
 
 # .PHONY: help clean sort addition negative fib xor
-.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur sw_sobel
+.PHONY: help clean fib addition filter_switch hw_conv_mmio mul_div_test sw_conv unified_conv
 
 help:
 	@echo "Usage: make <program_name> (e.g. make addition)"
@@ -29,7 +29,7 @@ help:
 # sort addition negative fib xor:
 # Generic Rule for all programs
 # sort addition negative fib xor:
-fib addition filter_switch hw_conv_mmio mul_div_test sw_blur sw_gaussian_blur sw_sobel:
+fib addition filter_switch hw_conv_mmio mul_div_test sw_conv unified_conv:
 	@echo "1. Generate Hex Files"
 	$(MAKE) clean -C $(MEM_GEN)
 	$(MAKE) $@ -C $(MEM_GEN)
