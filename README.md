@@ -217,12 +217,6 @@ Choose a C workload and compile it to `.hex` files:
 # Hardware coprocessor path (writes kernel via MMIO, polls STATUS)
 make hw_conv_mmio
 
-# Pure-software Gaussian blur (RV32M baseline)
-make sw_gaussian_blur
-
-# Sobel edge detection in software
-make sw_sobel
-
 # RV32M multiply/divide stress test
 make mul_div_test
 ```
@@ -300,15 +294,7 @@ The coprocessor lives at base address `0x80000000`. All accesses are 32-bit word
 
 ---
 
-## 👥 Team
 
-| Member | Hardware Ownership |
-| :--- | :--- |
-| **Shaurya** | `rv32m_alu.v`, `tb_rv32m_alu.v`, integration |
-| **Sukhjot** | `hazard_unit.v`, `decoder_ext.v` |
-| **Soumik** | `conv_engine.v`, `line_buffer.v`, `img_bram_in/out.v` |
-| **Satish** | `mmio_decoder.v`, `conv_datapath.v`, `top_fsm.v` |
-| **Abhirup** | C workloads, UART, Python GUI (`fpga_coprocessor_ui.py`) |
 
 <p align="center">
   <b>CS 224 — Advanced Computer Architecture · Group 18</b>
