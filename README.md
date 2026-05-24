@@ -289,6 +289,14 @@ The coprocessor lives at base address `0x80000000`. All accesses are 32-bit word
 | `0x80000028` | `START` | W | Write 1 to begin convolution |
 | `0x8000002C` | `STATUS` | R | Reads 1 when convolution is complete |
 
-<p align="center">
-  <b>CS 224 — Advanced Computer Architecture · Group 18</b>
-</p>
+---
+
+## 👥 Team
+
+**CS 224 — Advanced Computer Architecture · Group 18**
+
+* **Shaurya** ([@DeVshaurya01](https://github.com/DeVshaurya01))
+* **Sukhjot** ([@Sukhjot-SinghS](https://github.com/Sukhjot-SinghS))
+* **Soumik** ([@Soumik-Roy-codes](https://github.com/Soumik-Roy-codes))
+* **Abhirup** ([@abhirup810paul-cmd](https://github.com/abhirup810paul-cmd))
+* **Satish** ([@Dragon9-9](https://github.com/Dragon9-9))
