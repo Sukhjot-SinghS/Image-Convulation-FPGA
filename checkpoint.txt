@@ -1,0 +1,1 @@
+git checkout checkpoint-hardwaredemo-20260424-165657
