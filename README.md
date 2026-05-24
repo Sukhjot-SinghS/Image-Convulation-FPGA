@@ -128,7 +128,7 @@ Even within the FPGA, comparing wall-clock times is misleading: transferring 16,
 ## 📁 Repository Structure
 
 ```text
-WORKING_HARDWARE/
+IMAGE_CONVOLUTION_FPGA/
 │
 ├── hardware/
 │   ├── cpu/
