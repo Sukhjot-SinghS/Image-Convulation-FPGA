@@ -1,36 +1,60 @@
-# Vivado temporary files and folders to ignore
-*.jou
-*.log
-*.str
-*.pb
-*.wdb
-*.wcfg
-*.do
-*.vcd
-*.sdb
-*.elf
-*.rlx
-.Xil/
-xsim.dir/
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+buildenv/
+venv/
+.venv/
+build/
+dist/
 
-# Ignore binary/hex artifacts
-*.hex
-*.bin
-*.vvp
-*.out
+# === PyInstaller ===
+*.spec.bak
+Filter.exe
 
-# Ignore massive build directories
+# === Vivado generated (keep .xpr + .srcs only) ===
 *.cache/
 *.hw/
 *.ip_user_files/
 *.sim/
 *.runs/
-
-# Keep the Vivado project file, but ignore its auto-generated backups
 *.xpr.backup*
+.Xil/
+xsim.dir/
 
-# Build / cache artifacts
-node_modules/
-build/
-__pycache__/
-dist/
+# === Verilog simulation artifacts ===
+*.vvp
+*.vcd
+*.out
+*.wdb
+*.wcfg
+*.sdb
+*.elf
+*.rlx
+*.jou
+*.log
+*.str
+*.pb
+*.do
+
+# === Hex / binary ===
+*.hex
+*.bin
+
+# === IDE / editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === AI agent config ===
+.claude/
+CLAUDE.md
+
+# === OS junk ===
+Thumbs.db
+.DS_Store
+desktop.ini
