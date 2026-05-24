@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="icon.png" alt="GIC Logo" width="200" />
+  <img src="assets/icon.png" alt="GIC Logo" width="200" />
   
   # GIC — Grayscale Image Convolution FPGA Coprocessor
   
@@ -104,9 +104,8 @@ A host CPU running at 4 GHz processes a 128×128 image in microseconds. Comparin
 Even within the FPGA, comparing wall-clock times is misleading: transferring 16,384 bytes over a 115200-baud UART link takes ~1.4 seconds of pure serial overhead, swamping any compute-time difference.
 
 ### Our Measurement Methodology
-The FPGA firmware appends a 4-byte hardware cycle counter to the UART response payload. The GUI extracts this raw value and converts it to time at the 25 MHz hardware clock — giving a cycle-accurate measurement of the convolution compute phase alone, with no UART overhead.
-
-Software timing is measured by emulating RV32I instruction execution on the same 25 MHz clock: each pixel costs ~150 instructions.
+* **Hardware (`RUN HW`):** Runs physically on the FPGA. The hardware appends a 4-byte cycle counter to the UART response payload. The GUI extracts this raw value and converts it to true time at the 25 MHz hardware clock — giving a cycle-accurate measurement of the pure hardware compute phase without UART overhead.
+* **Software (`RUN SW`):** Runs a native C++ executable (`host_sw_conv.cpp` compiled via GCC) locally on the host PC to instantly process the image. To provide a fair architectural comparison, the GUI then **mathematically simulates** the execution time as if it had run on the 25 MHz RISC-V soft-core (where a naïve software convolution takes ~150 instructions per pixel).
 
 | Metric | Software (RV32I CPU) | Hardware (DSP Coprocessor) |
 | :--- | :--- | :--- |

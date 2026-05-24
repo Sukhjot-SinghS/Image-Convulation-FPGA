@@ -1602,7 +1602,7 @@ class FPGACoprocessorApp(ctk.CTk):
         self.configure(fg_color=T.BG_DEEP)
         self._place_on_screen2(1280, 860)
 
-        icon = Path(__file__).parent / "icon.ico" if "__file__" in globals() \
+        icon = Path(__file__).parent / "assets" / "icon.ico" if "__file__" in globals() \
             else None
         try:
             if icon and icon.exists():
