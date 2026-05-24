@@ -3,11 +3,15 @@ module IF_ID
 #(parameter [31:0] RESET = 32'h0000_0000)
 (input clk,input reset,input stall,output reg exception,
 // Instruction memory interface
-    input inst_mem_is_valid,input  [31:0] inst_mem_read_data,
+    input inst_mem_is_valid,
+    input  [31:0] inst_mem_read_data,
 // ----------------------------- // Signals previously read from pipe  // -----------------------------
-    input stall_read_i,input  [31:0] inst_fetch_pc,input  [31:0] instruction_i,
+    input stall_read_i,
+    input  [31:0] inst_fetch_pc,
+    input  [31:0] instruction_i,
 // -----------------------------    // WB-stage signals (passed in)    // -----------------------------
-    input wb_stall,input wb_alu_to_reg, 
+    input wb_stall,
+    input wb_alu_to_reg, 
     input wb_mem_to_reg,
     input  [4:0]wb_dest_reg_sel,
     input  [31:0]wb_result,
@@ -30,6 +34,9 @@ module IF_ID
     output [4:0]  dest_reg_sel_w,
     output [2:0]  alu_operation_w,
     output        illegal_inst_w,
+
+    output is_mext_w,//change
+
     output [31:0] instruction_o);
 //////////////// Including OPCODES ////////////////////////////
 `include "opcode.vh"
@@ -38,7 +45,32 @@ module IF_ID
 reg  [31:0] immediate;
 reg         illegal_inst;
 ////////////////////////////////////////////////////////////// IF stage////////////////////////////////////////////////////////////
-assign instruction_o = stall_read_i ? NOP : inst_mem_read_data;
+// assign instruction_o = stall_read_i ? NOP : inst_mem_read_data;
+
+
+reg [31:0] saved_instruction;
+    reg        has_saved_inst;
+
+    always @(posedge clk or negedge reset) begin
+        if (!reset) begin
+            has_saved_inst    <= 1'b0;
+            saved_instruction <= 32'h00000013; // NOP
+        end 
+        // 1. The exact moment a stall hits, catch the 'rem' instruction from RAM
+        else if (stall_read_i && !has_saved_inst) begin
+            saved_instruction <= inst_mem_read_data;
+            has_saved_inst    <= 1'b1;
+        end 
+        // 2. When the stall drops, reset the trapdoor so it goes back to normal RAM
+        else if (!stall_read_i) begin
+            has_saved_inst    <= 1'b0;
+        end
+    end
+
+    // 3. YOUR MODIFIED WIRE: If we saved an instruction, output it. Otherwise, output RAM.
+    assign instruction_o = has_saved_inst ? saved_instruction : ((stall_read_i ) ? NOP : inst_mem_read_data);
+
+
 ////////////////////////////////////////////////////////////// Exception detection////////////////////////////////////////////////////////////
 always @(posedge clk or negedge reset) begin
     if (!reset)
@@ -74,18 +106,13 @@ always @(*) begin
         default: illegal_inst = 1'b1;
 	endcase
 end
+// change 1 
 
-////////////////////////////////////////////////////////////// ID → EX Register////////////////////////////////////////////////////////////
-
-// TODO-4:
-// Generate control signals based on opcode
-// alu, lui, jal, jalr, branch, mem_write, mem_to_reg, arithsubtype
-
-id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_n    	(stall_read_i),
+id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_i    	(stall_read_i),
 // From ID
 	.immediate_i	(immediate),
 	.immediate_sel_i((instruction_i[`OPCODE] == JALR)  ||(instruction_i[`OPCODE] == LOAD)  ||(instruction_i[`OPCODE] == ARITHI) ),
-	.alu_i      	(instruction_i[`OPCODE] == ARITHI || instruction_i[`OPCODE] == ARITHR),
+	.alu_i      	((instruction_i[`OPCODE] == ARITHI) || (instruction_i[`OPCODE] == ARITHR && instruction_i[31:25] != 7'b0000001)),
 	.lui_i      	(instruction_i[`OPCODE] == LUI),
 	.jal_i      	(instruction_i[`OPCODE] == JAL),
 	.jalr_i     	(instruction_i[`OPCODE] == JALR),
@@ -99,6 +126,7 @@ id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_n    	(stall_r
 	.dest_reg_sel_i (instruction_i[`RD]),
 	.alu_op_i   	(instruction_i[`FUNC3]),
 	.illegal_inst_i (illegal_inst),
+    .is_mext_i(instruction_i[`OPCODE] == ARITHR && instruction_i[31:25] == 7'b0000001),
 
 	// To EX (WIRES)
 	.execute_immediate_o (execute_immediate_w),
@@ -116,7 +144,8 @@ id_ex_reg u_id_ex (.clk        	(clk),.reset_n    	(reset),.stall_n    	(stall_r
 	.src2_sel_o      	(src2_select_w),
 	.dest_reg_sel_o  	(dest_reg_sel_w),
 	.alu_op_o        	(alu_operation_w),
-	.illegal_inst_o  	(illegal_inst_w)
+	.illegal_inst_o  	(illegal_inst_w),
+    .is_mext_o(is_mext_w)
 );
 endmodule
 
@@ -126,7 +155,7 @@ endmodule
 module id_ex_reg (
     input         clk,
     input         reset_n,
-    input         stall_n,
+    input         stall_i,
 
     // Inputs from ID
     input  [31:0] immediate_i,
@@ -145,6 +174,7 @@ module id_ex_reg (
     input  [4:0]  dest_reg_sel_i,
     input  [2:0]  alu_op_i,
     input         illegal_inst_i,
+    input is_mext_i,
 
     // Outputs to EX
     output reg [31:0] execute_immediate_o,
@@ -162,7 +192,8 @@ module id_ex_reg (
     output reg [4:0]  src2_sel_o,
     output reg [4:0]  dest_reg_sel_o,
     output reg [2:0]  alu_op_o,
-    output reg        illegal_inst_o
+    output reg        illegal_inst_o,
+    output reg is_mext_o
 );
 
 always @(posedge clk or negedge reset_n) begin
@@ -183,8 +214,9 @@ always @(posedge clk or negedge reset_n) begin
         dest_reg_sel_o      <= 5'h0;
         alu_op_o            <= 3'h0;
         illegal_inst_o      <= 1'b0;
+        is_mext_o <= 1'b0;
     end
-    else if (!stall_n) begin
+    else if (!stall_i) begin
         execute_immediate_o <= immediate_i;
         immediate_sel_o     <= immediate_sel_i;
         alu_o               <= alu_i;
@@ -201,6 +233,7 @@ always @(posedge clk or negedge reset_n) begin
         dest_reg_sel_o      <= dest_reg_sel_i;
         alu_op_o            <= alu_op_i;
         illegal_inst_o      <= illegal_inst_i;
+        is_mext_o           <= is_mext_i;
     end
 end
 
