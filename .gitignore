@@ -1,0 +1,68 @@
+# ==============================================================================
+# GIC FPGA Coprocessor Gitignore Rules
+# ==============================================================================
+
+# Vivado temporary compilation files
+*.jou
+*.log
+*.str
+*.pb
+*.wdb
+*.wcfg
+*.do
+*.sdb
+*.rlx
+.Xil/
+xsim.dir/
+
+# Build and package cache artifacts
+node_modules/
+build/
+dist/
+__pycache__/
+*.spec.backup*
+*.spec
+
+# Ignore binary/hex hardware artifacts
+*.hex
+*.bin
+*.vvp
+*.out
+*.vcd
+*.elf
+
+# Ignore temporary simulation stdout & dump files
+hardware/cpu/stdout*
+*.backup
+*.vcd
+*.txt
+
+# Ignore massive Vivado auto-generated project directories (rebuildable via TCL)
+vivado_project/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.xpr.backup*
+
+# Ignore personal document backups and local skill logs
+*.docx
+*.html
+*.skill
+temp_*.v
+old_*.v
+checkpoint.txt
+claude_code_context.md
+resume_bullets.md
+icon_orig.png
+.claude/
+
+# Legacy duplicate Verilog copies (software/modules/)
+software/modules/
+
+# Debug and review artifacts
+surgical-fix*
+
+# Compiled host binaries
+software/host_sw_conv.exe
