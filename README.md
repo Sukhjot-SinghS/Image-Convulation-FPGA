@@ -293,7 +293,7 @@ The coprocessor lives at base address `0x80000000`. All accesses are 32-bit word
 
 ## 👥 Team
 
-**CS 224 — Advanced Computer Architecture · Group 18**
+**CS 223 — Advanced Computer Architecture - Hardware Lab · Group 18**
 
 * **Shaurya** ([@DeVshaurya01](https://github.com/DeVshaurya01))
 * **Sukhjot** ([@Sukhjot-SinghS](https://github.com/Sukhjot-SinghS))
